@@ -99,7 +99,8 @@ interface SignatureSubPacket {
 
     open val mustBeHashed: Boolean
         get() = false
-    abstract val isCritical: Boolean
+    open val shouldBeCritical: Boolean
+        get() = false
 
     /**
      * サブパケットのエンコードされたバイト列
@@ -119,7 +120,13 @@ interface SignatureSubPacket {
             val dataOutputStream = DataOutputStream(bytes)
 
             dataOutputStream.write( packetLen )
-            dataOutputStream.writeByte( this.subPacketType )
+
+            if(this.shouldBeCritical){
+                dataOutputStream.writeByte( 0b10000000 or this.subPacketType )
+            }
+            else{
+                dataOutputStream.writeByte( this.subPacketType )
+            }
             dataOutputStream.write( this.encoded )
 
             return bytes.toByteArray()
@@ -134,7 +141,6 @@ interface SignatureSubPacket {
         const val REVOCABLE = 7
         const val KEY_EXPIRATION_TIME = 9
         const val PREFERRED_SYMMETRIC_CIPHERS = 11
-        const val REVOCATION_KEY = 12
         const val ISSUER_KEY_ID = 16
         const val NOTATION_DATA = 20
         const val PREFERRED_HASH_ALGORITHMS = 21
@@ -144,13 +150,17 @@ interface SignatureSubPacket {
         const val PRIMARY_USER_ID = 25
         const val POLICY_URI = 26
         const val KEY_FLAGS = 27
-        const val SIGNERS_USER_ID = 28
+        const val SIGNER_USER_ID = 28
         const val REASON_FOR_REVOCATION = 29
         const val FEATURES = 30
         const val SIGNATURE_TARGET = 31
         const val EMBEDDED_SIGNATURE = 32
         const val ISSUER_FINGERPRINT = 33
         const val INTENDED_RECIPIENT_FINGERPRINT = 35
+        const val ATTESTED_CERTIFICATIONS = 37
+        const val KEY_BLOCK = 38
         const val PREFERRED_AEAD_CIPHERSUITES = 39
+
+        const val UNKNOWN_SUBPACKET = -1
     }
 }
