@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="OpenPGP-kt">
+    <output-path>$PROJECT_DIR$/out/artifacts/OpenPGP_kt</output-path>
+    <root id="archive" name="OpenPGP-kt.jar">
+      <element id="module-output" name="OpenPGP-kt.main" />
+      <element id="module-source" name="OpenPGP-kt.main" />
+    </root>
+  </artifact>
+</component>
