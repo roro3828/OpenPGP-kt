@@ -179,7 +179,7 @@ open class PublicKey:OpenPGPPacket {
      * @param version 鍵のバージョン
      * @param creationTime 鍵が作成された時間
      * @param keyAlgo 鍵のアルゴリズム
-     * @param validDays 鍵の有効期限
+     * @param validDays 鍵の有効期限 (単位は日) バージョン3でのみ使われる
      * @param key 公開鍵
      * @throws IllegalArgumentException versionが3,4,6以外の場合
      */

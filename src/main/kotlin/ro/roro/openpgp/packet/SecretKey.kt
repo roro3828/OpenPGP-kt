@@ -7,6 +7,7 @@ import ro.roro.openpgp.OpenPGPSymmetricKeyAlgorithm
 import ro.roro.openpgp.OpenPGPUtil
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import java.security.KeyPair
 import java.security.PrivateKey
 
 open class SecretKey:OpenPGPPacket {
@@ -115,6 +116,29 @@ open class SecretKey:OpenPGPPacket {
 
         this.secretKeyData = null
         this.secretKey = secretKey
+    }
+
+    /**
+     * 秘密鍵を作成する
+     * @param creationTime 鍵の作成時間 (Unix time)
+     * @param keyAlgo 鍵のアルゴリズム (OpenPGPPublicKeyAlgorithms)
+     * @param keyPair 鍵ペア
+     * @param version 鍵のバージョン (デフォルト: 6)
+     */
+    constructor(
+        creationTime: Int,
+        keyAlgo: Int,
+        keyPair: KeyPair,
+        version: Int = 6
+    ){
+        if( version != 6 && version != 4){
+            throw IllegalArgumentException("This library only supports generating version 4 or 6 keys")
+        }
+
+        this.publicKey = PublicKey(creationTime, keyAlgo, keyPair.public, version)
+
+        this.secretKeyData = null
+        this.secretKey = keyPair.private
     }
 
     override val encoded: ByteArray
@@ -250,7 +274,8 @@ open class SecretKey:OpenPGPPacket {
         val keyDigest = decryptedKey.sliceArray(decryptedKey.size - 20 until decryptedKey.size)
 
         // 与えられたハッシュ値と計算したハッシュ値が異なるときは、パスフレーズが間違っているか、鍵が破損している
-        if(!keyDigest.contentEquals(OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial))){
+        val rawKeyDigest = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial)
+        if(!keyDigest.contentEquals(rawKeyDigest)){
             throw IllegalArgumentException("Key or passphrase is incorrect")
         }
 
