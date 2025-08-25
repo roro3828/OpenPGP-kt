@@ -35,6 +35,12 @@ class OpenPGPSigner{
     fun sign(digest: ByteArray, passPhrase: String): ByteArray {
         return sign(digest, passPhrase.toByteArray())
     }
+    /**
+     * digestに対して署名を生成する
+     * @param digest 署名対象のダイジェスト値
+     * @param passPhrase パスフレーズ
+     * @return 署名値 署名値はRFC 9580の仕様に従った形式で返される
+     */
     fun sign(digest: ByteArray, passPhrase: ByteArray? = null): ByteArray {
         if(secretKey.keyVertion != 4 && secretKey.keyVertion != 6){
             // このライブラリではv4とv6の署名生成のみサポート
@@ -60,52 +66,21 @@ class OpenPGPSigner{
             it.sign()
         }
 
-        return signature
-    }
-
-    fun generateSignature(signatureType: Int, data: ByteArray, hashedSubPackets: List<SignatureSubPacket>? = null, unhashedSubPackets: List<SignatureSubPacket>? = null, passPhrase: ByteArray? = null, hashAlgorithm: Int = OpenPGPDigest.SHA256): ro.roro.openpgp.packet.signature.Signature {
-        val signaturePacket = ro.roro.openpgp.packet.signature.Signature.getV4Instance(
-            signatureType,
-            secretKey.keyAlgo,
-            hashAlgorithm,
-            hashedSubPackets,
-            unhashedSubPackets
-        )
-
-        val toBeHashed = ByteArrayOutputStream()
-        toBeHashed.write(data)
-        toBeHashed.write(signaturePacket.trailer)
-
-        val digest = OpenPGPDigest.getInstance(hashAlgorithm).digest(toBeHashed.toByteArray())
-        val signature = sign(digest, passPhrase)
-
-        signaturePacket.hashLeft2Bytes = ((digest[0].toInt() and 0xFF shl 8) or (digest[1].toInt() and 0xFF)).toShort()
-
-        signaturePacket.signatureValue =  when(secretKey.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.Ed25519,
+        val signatureValue = when(secretKey.keyAlgo){
             OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
-                // EdDSAの署名はRとSの連結で表現される
-                // RとSはそれぞれ32バイト
-                if(signature.size != 64){
-                    throw Error("EdDSA signature must be 64 bytes long, but was ${signature.size} bytes.")
-                }
-                val r = signature.copyOfRange(0, 32)
-                val s = signature.copyOfRange(32, 64)
+                // Ed25519の署名は64バイトのRとSの連結
+                // OpenPGPではMPIとして格納するため、先頭に2バイトの長さを付与する
+                val r = signature.sliceArray(0 until 32)
+                val s = signature.sliceArray(32 until 64)
 
-                val mpiR = OpenPGPUtil.toMPI(r)
-                val mpiS = OpenPGPUtil.toMPI(s)
+                val rWithLength = OpenPGPUtil.toMPI(r)
+                val sWithLength = OpenPGPUtil.toMPI(s)
 
-                val sigOut = ByteArrayOutputStream()
-                sigOut.write(mpiR)
-                sigOut.write(mpiS)
-
-                sigOut.toByteArray()
+                rWithLength + sWithLength
             }
             else -> throw Error("Unsupported algorithm: ${secretKey.keyAlgo}")
         }
 
-        signaturePacket.hashLeft2Bytes = ((digest[0].toInt() and 0xFF shl 8) or (digest[1].toInt() and 0xFF)).toShort()
-
-        return signaturePacket
+        return signatureValue
     }
 }

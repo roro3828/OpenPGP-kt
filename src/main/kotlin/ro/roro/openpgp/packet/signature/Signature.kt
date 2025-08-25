@@ -1,5 +1,7 @@
 package ro.roro.openpgp.packet.signature
 
+import ro.roro.openpgp.OpenPGPDigest
+import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.OpenPGPUtil
 import ro.roro.openpgp.packet.OpenPGPPacket
 import java.io.ByteArrayInputStream
@@ -47,25 +49,35 @@ import java.io.DataOutputStream
 
 class Signature: OpenPGPPacket {
 
-    override val packetType = OpenPGPPacket.Companion.SIGNATURE
+    override val packetType = OpenPGPPacket.SIGNATURE
 
+    private val trailer: SignatureTrailer
     /**
      * 署名のバージョン
      * 3 or 4 or 6
      * 3は非推奨
      */
     val signatureVersion: Int
+        get() {
+            return trailer.signatureVersion
+        }
 
     /**
      * 署名タイプ
      */
     val signatureTypeId: Int
+        get() {
+            return trailer.signatureTypeId
+        }
 
     /**
      * 署名が作成された時間
      * バージョン3でのみ使用される
      */
     val creationTime: Int
+        get() {
+            return trailer.creationTime
+        }
 
     /**
      * 署名した鍵のID
@@ -78,21 +90,27 @@ class Signature: OpenPGPPacket {
      * 署名の鍵アルゴリズムID
      */
     val keyAlgorithmId: Int
+        get() {
+            return trailer.keyAlgorithmId
+        }
 
     /**
      * 署名のハッシュアルゴリズムID
      */
     val hashAlgorithmId: Int
+        get() {
+            return trailer.hashAlgorithmId
+        }
 
     /**
      * ハッシュ値の左側2Byte
      */
-    var hashLeft2Bytes: Short
+    val hashLeft2Bytes: Short
 
     /**
      * 署名の値
      */
-    var signatureValue: ByteArray?
+    val signatureValue: ByteArray
 
     /**
      * ハッシュに使用したソルト
@@ -105,12 +123,85 @@ class Signature: OpenPGPPacket {
      * バージョン4, 6で使用される
      */
     val hashedSubPackets: List<SignatureSubPacket>
+        get() {
+            return trailer.subPackets
+        }
 
     /**
-     * ハッシュされていないサブパケットのリスト
+     * ハッシュされないサブパケットのリスト
      * バージョン4, 6で使用される
      */
     val unhashedSubPackets: List<SignatureSubPacket>
+
+    /**
+     * バージョン3の署名パケット
+     */
+    constructor(
+        trailer: SignatureTrailer,
+        signerKeyId: ByteArray,
+        hashLeft2Bytes: Short,
+        signatureValue: ByteArray
+    ) {
+        require(trailer.signatureVersion == 3) { "Signature version must be 3 for this constructor." }
+        require(signerKeyId.size == 8) { "signerKeyId must be 8 bytes long." }
+        this.trailer = trailer
+        this.signerKeyId = signerKeyId
+        this.hashLeft2Bytes = hashLeft2Bytes
+        this.signatureValue = signatureValue
+        this.unhashedSubPackets = emptyList()
+        this.salt = ByteArray(0) // バージョン6以外では使用されない
+    }
+
+    /**
+     * バージョン4の署名パケット
+     */
+    constructor(
+        trailer: SignatureTrailer,
+        hashLeft2Bytes: Short,
+        signatureValue: ByteArray,
+        unhashedSubPackets: List<SignatureSubPacket>?
+    ) {
+        require(trailer.signatureVersion == 4) { "Signature version must be 4 for this constructor." }
+        this.trailer = trailer
+        this.signerKeyId = ByteArray(0) // バージョン3以外では使用されない
+        this.hashLeft2Bytes = hashLeft2Bytes
+        this.signatureValue = signatureValue
+        if(unhashedSubPackets == null){
+            this.unhashedSubPackets = emptyList()
+        }
+        else {
+            this.unhashedSubPackets = unhashedSubPackets
+        }
+
+        this.salt = ByteArray(0) // バージョン6以外では使用されない
+    }
+    /**
+     * バージョン6の署名パケット
+     */
+    constructor(
+        trailer: SignatureTrailer,
+        hashLeft2Bytes: Short,
+        signatureValue: ByteArray,
+        salt: ByteArray,
+        unhashedSubPackets: List<SignatureSubPacket>?
+    ) {
+        require(trailer.signatureVersion == 6) { "Signature version must be 6 for this constructor." }
+        this.trailer = trailer
+        this.signerKeyId = ByteArray(0) // バージョン3以外では使用されない
+        this.hashLeft2Bytes = hashLeft2Bytes
+        this.signatureValue = signatureValue
+
+        val saltSize = OpenPGPDigest.getInstance(this.trailer.keyAlgorithmId).saltSize
+        require(saltSize == salt.size) { "salt must be $saltSize bytes long for key algorithm ${this.trailer.keyAlgorithmId}." }
+        this.salt = salt
+
+        if(unhashedSubPackets == null){
+            this.unhashedSubPackets = emptyList()
+        }
+        else {
+            this.unhashedSubPackets = unhashedSubPackets
+        }
+    }
 
     companion object{
         const val BINARY_SIGNATURE = 0x00
@@ -130,25 +221,38 @@ class Signature: OpenPGPPacket {
         const val THIRD_PARTY_CONFIRMATION_SIGNATURE = 0x50
 
 
-        fun getV4Instance(
+        fun getV4Signature(
+            data: ByteArray,
+            signer: OpenPGPSigner,
             signatureTypeId: Int,
             keyAlgorithmId: Int,
             hashAlgorithmId: Int,
             hashedSubPackets: List<SignatureSubPacket>?,
-            unhashedSubPackets: List<SignatureSubPacket>?
+            unhashedSubPackets: List<SignatureSubPacket>?,
+            passPhrase: ByteArray? = null
         ): Signature{
 
-            return Signature(
+            val trailer = SignatureTrailer(
                 4,
                 signatureTypeId,
-                0, // バージョン4では作成時間は使用されない
-                null, // バージョン4では署名者の鍵IDは使用されない
                 keyAlgorithmId,
                 hashAlgorithmId,
-                0, // ハッシュ値の左側2Byteは署名生成後に設定される
-                null, // 署名値は署名生成後に設定される
-                null, // バージョン4ではsaltは使用されない
-                hashedSubPackets,
+                hashedSubPackets
+            )
+
+            val hash = OpenPGPDigest.getInstance(hashAlgorithmId)
+            hash.write(data)
+            hash.write(trailer.encoded)
+
+            val digest = hash.digest()
+            val left2Bytes = ((digest[0].toInt() and 0xFF shl 8) or (digest[1].toInt() and 0xFF)).toShort()
+
+            val signatureValue = signer.sign(digest, passPhrase)
+
+            return Signature(
+                trailer,
+                left2Bytes,
+                signatureValue,
                 unhashedSubPackets
             )
 
@@ -197,17 +301,18 @@ class Signature: OpenPGPPacket {
             val hashLeft2Bytes = dataInputStream.readShort()
             val signatureValue = dataInputStream.readAllBytes() // 残りのデータは署名値
 
-            return Signature(3,
+            val trailer = SignatureTrailer(
                 signatureType,
                 creationTime,
-                signerKeyId,
                 pubKeyAlgorithm,
-                hashAlgorithm,
+                hashAlgorithm
+            )
+
+            return Signature(
+                trailer,
+                signerKeyId,
                 hashLeft2Bytes,
-                signatureValue,
-                null, // バージョン3ではsaltは使用されない
-                null, // バージョン3ではハッシュされたサブパケットは使用されない
-                null  // バージョン3ではハッシュされていないサブパケットは使用されない
+                signatureValue
             )
         }
 
@@ -248,26 +353,34 @@ class Signature: OpenPGPPacket {
 
             val hashLeft2Bytes = dataInputStream.readShort()
 
-            val salt: ByteArray? = if( version == 6 ) {
-                val saltLength = dataInputStream.readByte().toInt()
-
-                dataInputStream.readNBytes(saltLength)
-            } else {
-                null // バージョン4ではsaltは使用されない
-            }
-
-            return Signature(version,
+            val trailer = SignatureTrailer(
+                version,
                 signatureType,
-                0, // バージョン4, 6では作成時間は使用されない
-                null, // バージョン4, 6では署名者の鍵IDは使用されない
                 pubKeyAlgorithm,
                 hashAlgorithm,
-                hashLeft2Bytes,
-                dataInputStream.readAllBytes(), // 残りのデータは署名値
-                salt,
-                hashedSubPackets,
-                unhashedSubPackets
+                hashedSubPackets
             )
+
+            if(version == 4){
+                return Signature(
+                    trailer,
+                    hashLeft2Bytes,
+                    dataInputStream.readAllBytes(),
+                    unhashedSubPackets
+                )
+            }
+            else{
+                val saltLength = dataInputStream.readByte().toInt()
+                val salt = dataInputStream.readNBytes(saltLength)
+
+                return Signature(
+                    trailer,
+                    hashLeft2Bytes,
+                    dataInputStream.readAllBytes(),
+                    salt,
+                    unhashedSubPackets
+                )
+            }
         }
 
         /**
@@ -433,71 +546,6 @@ class Signature: OpenPGPPacket {
         }
     }
 
-    private constructor(
-        signatureVersion: Int,
-        signatureTypeId: Int,
-        creationTime: Int,
-        signerKeyId: ByteArray?,
-        keyAlgorithmId: Int,
-        hashAlgorithmId: Int,
-        hashLeft2Bytes: Short,
-        signatureValue: ByteArray?,
-        salt: ByteArray?,
-        hashedSubPackets: List<SignatureSubPacket>?,
-        unhashedSubPackets: List<SignatureSubPacket>?
-    ) {
-        if(!( signatureVersion==3 || signatureVersion==4 || signatureVersion==6 )) {
-            throw IllegalArgumentException("Invalid signature version: $signatureVersion")
-        }
-        this.signatureVersion = signatureVersion
-        this.signatureTypeId = signatureTypeId
-
-        if( this.signatureVersion == 3 ){
-            if( signerKeyId == null ){
-                throw IllegalArgumentException("signerKeyId must not be null for signature version 3")
-            }
-            this.creationTime = creationTime
-            this.signerKeyId = signerKeyId
-        }
-        else{
-            this.creationTime = 0 // バージョン3以外では使用されない
-            this.signerKeyId = ByteArray(0) // バージョン3以外では使用されない
-        }
-        this.keyAlgorithmId = keyAlgorithmId
-        this.hashAlgorithmId = hashAlgorithmId
-        this.hashLeft2Bytes = hashLeft2Bytes
-        this.signatureValue = signatureValue
-
-        if( this.signatureVersion == 6 ){
-            if( salt == null ){
-                throw IllegalArgumentException("salt must not be null for signature version 6")
-            }
-            this.salt = salt
-        }
-        else{
-            this.salt = ByteArray(0) // バージョン6以外では使用されない
-        }
-
-        if( this.signatureVersion != 3){
-            if( hashedSubPackets == null ){
-                this.hashedSubPackets = emptyList()
-            }
-            else{
-                this.hashedSubPackets = hashedSubPackets
-            }
-            if( unhashedSubPackets == null ){
-                this.unhashedSubPackets = emptyList()
-            }
-            else {
-                this.unhashedSubPackets = unhashedSubPackets
-            }
-        }
-        else{
-            this.hashedSubPackets = emptyList() // バージョン3では使用されない
-            this.unhashedSubPackets = emptyList() // バージョン3では使用されない
-        }
-    }
-
     override val encoded: ByteArray
         get(){
             val bytesStream = ByteArrayOutputStream()
@@ -580,43 +628,6 @@ class Signature: OpenPGPPacket {
             // ハッシュされていないサブパケットのエンコード
             for (subPacket in unhashedSubPackets) {
                 bytesStream.write(subPacket.encodedWithHeader)
-            }
-
-            return bytesStream.toByteArray()
-        }
-
-    val trailer: ByteArray
-        get() {
-            val bytesStream = ByteArrayOutputStream()
-            val dataStream = DataOutputStream(bytesStream)
-            dataStream.writeByte(this.signatureVersion)
-            when( this.signatureVersion ){
-                3->{
-                    dataStream.writeByte( this.signatureTypeId )
-                    dataStream.writeInt(this.creationTime)
-                }
-                4, 6->{
-                    dataStream.writeByte(this.signatureTypeId)
-                    dataStream.writeByte(this.keyAlgorithmId)
-                    dataStream.writeByte(this.hashAlgorithmId)
-
-                    val hashedSubPacketsBytes = this.encodedHashedPackets
-
-                    if(this.signatureVersion == 4){
-                        dataStream.writeShort( hashedSubPacketsBytes.size )
-                    }
-                    else{
-                        dataStream.writeInt( hashedSubPacketsBytes.size )
-                    }
-                    dataStream.write( hashedSubPacketsBytes )
-
-                    val hashDataLength = dataStream.size()
-
-                    dataStream.writeByte(this.signatureVersion)
-                    dataStream.writeByte(0xFF)
-                    dataStream.writeInt(hashDataLength)
-
-                }
             }
 
             return bytesStream.toByteArray()

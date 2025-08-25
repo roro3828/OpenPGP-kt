@@ -274,7 +274,8 @@ open class SecretKey:OpenPGPPacket {
         val keyDigest = decryptedKey.sliceArray(decryptedKey.size - 20 until decryptedKey.size)
 
         // 与えられたハッシュ値と計算したハッシュ値が異なるときは、パスフレーズが間違っているか、鍵が破損している
-        if(!keyDigest.contentEquals(OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial))){
+        val rawKeyDigest = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial)
+        if(!keyDigest.contentEquals(rawKeyDigest)){
             throw IllegalArgumentException("Key or passphrase is incorrect")
         }
 

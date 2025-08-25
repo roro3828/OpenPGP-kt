@@ -49,35 +49,19 @@ import java.security.MessageDigest
  *    |         | Experimental Use |             |                        |
  *    +---------+------------------+-------------+------------------------+
  */
-class OpenPGPDigest(algorithm: String): MessageDigest( algorithm ) {
-    companion object{
-        const val MD5 = 1
-        const val SHA1 = 2
-        const val RIPEMD160 = 3
-        const val SHA256 = 8
-        const val SHA384 = 9
-        const val SHA512 = 10
-        const val SHA224 = 11
-        const val SHA3_256 = 12
-        const val SHA3_512 = 14
+class OpenPGPDigest {
 
-        fun getInstance(algorithm: Int): OpenPGPDigest {
-            return when (algorithm) {
-                MD5 -> OpenPGPDigest("MD5")
-                SHA1 -> OpenPGPDigest("SHA-1")
-                RIPEMD160 -> OpenPGPDigest("RIPEMD160")
-                SHA256 -> OpenPGPDigest("SHA-256")
-                SHA384 -> OpenPGPDigest("SHA-384")
-                SHA512 -> OpenPGPDigest("SHA-512")
-                SHA224 -> OpenPGPDigest("SHA-224")
-                SHA3_256 -> OpenPGPDigest("SHA3-256")
-                SHA3_512 -> OpenPGPDigest("SHA3-512")
-                else -> throw IllegalArgumentException("Unsupported algorithm: $algorithm")
-            }
-        }
+    val algorithmTag: Int
+    val algorithm: String
+    val saltSize: Int
+    private val delegate: MessageDigest
+
+    private constructor(algorithmTag: Int, algorithm: String, saltSize: Int) {
+        this.algorithmTag = algorithmTag
+        this.algorithm = algorithm
+        this.saltSize = saltSize
+        this.delegate = MessageDigest.getInstance(algorithm)
     }
-
-    private val delegate: MessageDigest = getInstance(algorithm)
 
     fun write(input: ByteArray){
         this.update(input)
@@ -119,21 +103,63 @@ class OpenPGPDigest(algorithm: String): MessageDigest( algorithm ) {
         )
     }
 
-    override fun engineUpdate(input: Byte) {
+    fun update(input: Byte) {
         delegate.update(input)
     }
 
-    override fun engineUpdate(input: ByteArray?, offset: Int, len: Int) {
+    fun update(input: ByteArray) {
+        delegate.update(input)
+    }
+
+    fun update(input: ByteArray, offset: Int, len: Int) {
         delegate.update(input, offset, len)
     }
 
-    override fun engineDigest(): ByteArray {
+    fun digest(input: ByteArray): ByteArray {
+        return delegate.digest(input)
+    }
+
+    fun digest(): ByteArray {
         return delegate.digest()
     }
 
-    override fun engineReset() {
+    fun reset() {
         delegate.reset()
     }
 
 
+    companion object{
+
+        const val MD5 = 1
+        const val SHA1 = 2
+        //const val RIPEMD160 = 3
+        const val SHA256 = 8
+        const val SHA384 = 9
+        const val SHA512 = 10
+        const val SHA224 = 11
+        const val SHA3_256 = 12
+        const val SHA3_512 = 14
+
+        const val SHA256_SALT_SIZE = 16
+        const val SHA384_SALT_SIZE = 24
+        const val SHA512_SALT_SIZE = 32
+        const val SHA224_SALT_SIZE = 16
+        const val SHA3_256_SALT_SIZE = 16
+        const val SHA3_512_SALT_SIZE = 32
+
+        fun getInstance(algorithm: Int): OpenPGPDigest {
+            return when(algorithm){
+                MD5 -> OpenPGPDigest(MD5, "MD5", 0)
+                SHA1 -> OpenPGPDigest(SHA1, "SHA-1", 0)
+                //RIPEMD160 -> OpenPGPDigest(RIPEMD160, "RIPEMD160", 0)
+                SHA256 -> OpenPGPDigest(SHA256, "SHA-256", SHA256_SALT_SIZE)
+                SHA384 -> OpenPGPDigest(SHA384, "SHA-384", SHA384_SALT_SIZE)
+                SHA512 -> OpenPGPDigest(SHA512, "SHA-512", SHA512_SALT_SIZE)
+                SHA224 -> OpenPGPDigest(SHA224, "SHA-224", SHA224_SALT_SIZE)
+                SHA3_256 -> OpenPGPDigest(SHA3_256, "SHA3-256", SHA3_256_SALT_SIZE)
+                SHA3_512 -> OpenPGPDigest(SHA3_512, "SHA3-512", SHA3_512_SALT_SIZE)
+                else -> throw IllegalArgumentException("Unsupported digest algorithm: $algorithm")
+            }
+        }
+    }
 }

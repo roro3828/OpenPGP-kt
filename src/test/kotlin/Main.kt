@@ -2,13 +2,11 @@ package ro.roro
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import ro.roro.openpgp.OpenPGPDigest
-import ro.roro.openpgp.OpenPGPECCCurveOIDs
+import ro.roro.openpgp.OpenPGPPublicKeyAlgorithms
 import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.OpenPGPUtil
-import ro.roro.openpgp.packet.OpenPGPPacket
 import ro.roro.openpgp.packet.PublicKey
 import ro.roro.openpgp.packet.SecretKey
-import ro.roro.openpgp.packet.UserID
 import ro.roro.openpgp.packet.signature.IssuerKeyID
 import ro.roro.openpgp.packet.signature.Signature
 import ro.roro.openpgp.packet.signature.SignatureCreationTime
@@ -47,9 +45,12 @@ fun main(){
 
     val issuer = IssuerKeyID(secretKeyPacket.keyId)
 
-    val signature = signer.generateSignature(
-        Signature.BINARY_SIGNATURE,
+    val signature = Signature.getV4Signature(
         "OpenPGP".toByteArray(),
+        signer,
+        Signature.BINARY_SIGNATURE,
+        OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY,
+        OpenPGPDigest.SHA256,
         listOf(creationtime),
         listOf(issuer)
     )
