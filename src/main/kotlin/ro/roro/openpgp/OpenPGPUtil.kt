@@ -84,7 +84,7 @@ class OpenPGPUtil {
             else if(len <= 16319){
                 // 192-7936
                 val fixed = len - 192
-                dataOutputStream.writeByte(( fixed shr 8 ) + 192 )
+                dataOutputStream.writeByte(( fixed ushr 8 ) + 192 )
                 dataOutputStream.writeByte(fixed % 0x0100 )
             }
             else{
@@ -132,7 +132,7 @@ class OpenPGPUtil {
         fun toMPI(byteArray: ByteArray): ByteArray{
             var zeroCount = 0
             for(i in 7 downTo 0){
-                if(((byteArray[0].toInt() shr i) and 0b1) == 0b0){
+                if(((byteArray[0].toInt() ushr i) and 0b1) == 0b0){
                     zeroCount++;
                 }
                 else{
@@ -142,7 +142,7 @@ class OpenPGPUtil {
             val mpiLen = byteArray.size * 8 - zeroCount
 
             return byteArrayOf(
-                (mpiLen shr 8).toByte(),
+                (mpiLen ushr 8).toByte(),
                 mpiLen.toByte(),
                 *(byteArray.sliceArray(byteArray.size-(mpiLen+7)/8 until byteArray.size)),
             )

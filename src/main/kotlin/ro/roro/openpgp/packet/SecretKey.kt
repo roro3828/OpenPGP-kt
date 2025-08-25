@@ -7,6 +7,7 @@ import ro.roro.openpgp.OpenPGPSymmetricKeyAlgorithm
 import ro.roro.openpgp.OpenPGPUtil
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import java.security.KeyPair
 import java.security.PrivateKey
 
 open class SecretKey:OpenPGPPacket {
@@ -115,6 +116,29 @@ open class SecretKey:OpenPGPPacket {
 
         this.secretKeyData = null
         this.secretKey = secretKey
+    }
+
+    /**
+     * 秘密鍵を作成する
+     * @param creationTime 鍵の作成時間 (Unix time)
+     * @param keyAlgo 鍵のアルゴリズム (OpenPGPPublicKeyAlgorithms)
+     * @param keyPair 鍵ペア
+     * @param version 鍵のバージョン (デフォルト: 6)
+     */
+    constructor(
+        creationTime: Int,
+        keyAlgo: Int,
+        keyPair: KeyPair,
+        version: Int = 6
+    ){
+        if( version != 6 && version != 4){
+            throw IllegalArgumentException("This library only supports generating version 4 or 6 keys")
+        }
+
+        this.publicKey = PublicKey(creationTime, keyAlgo, keyPair.public, version)
+
+        this.secretKeyData = null
+        this.secretKey = keyPair.private
     }
 
     override val encoded: ByteArray

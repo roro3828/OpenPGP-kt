@@ -87,12 +87,12 @@ class Signature: OpenPGPPacket {
     /**
      * ハッシュ値の左側2Byte
      */
-    val hashLeft2Bytes: Int
+    var hashLeft2Bytes: Short
 
     /**
      * 署名の値
      */
-    private val signatureValue: ByteArray?
+    var signatureValue: ByteArray?
 
     /**
      * ハッシュに使用したソルト
@@ -129,6 +129,30 @@ class Signature: OpenPGPPacket {
         const val TIMESTAMP_SIGNATURE = 0x40
         const val THIRD_PARTY_CONFIRMATION_SIGNATURE = 0x50
 
+
+        fun getV4Instance(
+            signatureTypeId: Int,
+            keyAlgorithmId: Int,
+            hashAlgorithmId: Int,
+            hashedSubPackets: List<SignatureSubPacket>?,
+            unhashedSubPackets: List<SignatureSubPacket>?
+        ): Signature{
+
+            return Signature(
+                4,
+                signatureTypeId,
+                0, // バージョン4では作成時間は使用されない
+                null, // バージョン4では署名者の鍵IDは使用されない
+                keyAlgorithmId,
+                hashAlgorithmId,
+                0, // ハッシュ値の左側2Byteは署名生成後に設定される
+                null, // 署名値は署名生成後に設定される
+                null, // バージョン4ではsaltは使用されない
+                hashedSubPackets,
+                unhashedSubPackets
+            )
+
+        }
         /**
          * バイト列からSignatureパケットへ変換する
          * @param body パケットヘッダーを含まないボディのみのデータ
@@ -170,7 +194,7 @@ class Signature: OpenPGPPacket {
             val signerKeyId = dataInputStream.readNBytes(8) // 8バイトの鍵ID
             val pubKeyAlgorithm = dataInputStream.readByte().toInt()
             val hashAlgorithm = dataInputStream.readByte().toInt()
-            val hashLeft2Bytes = dataInputStream.readShort().toInt()
+            val hashLeft2Bytes = dataInputStream.readShort()
             val signatureValue = dataInputStream.readAllBytes() // 残りのデータは署名値
 
             return Signature(3,
@@ -222,7 +246,7 @@ class Signature: OpenPGPPacket {
                 )
             )
 
-            val hashLeft2Bytes = dataInputStream.readShort().toInt()
+            val hashLeft2Bytes = dataInputStream.readShort()
 
             val salt: ByteArray? = if( version == 6 ) {
                 val saltLength = dataInputStream.readByte().toInt()
@@ -416,7 +440,7 @@ class Signature: OpenPGPPacket {
         signerKeyId: ByteArray?,
         keyAlgorithmId: Int,
         hashAlgorithmId: Int,
-        hashLeft2Bytes: Int,
+        hashLeft2Bytes: Short,
         signatureValue: ByteArray?,
         salt: ByteArray?,
         hashedSubPackets: List<SignatureSubPacket>?,
@@ -489,7 +513,7 @@ class Signature: OpenPGPPacket {
                     dataStream.write( this.signerKeyId)
                     dataStream.writeByte( this.keyAlgorithmId )
                     dataStream.writeByte( this.hashAlgorithmId )
-                    dataStream.writeShort(this.hashLeft2Bytes)
+                    dataStream.writeShort(this.hashLeft2Bytes.toInt())
 
                     dataStream.write( this.signatureValue )
                 }
@@ -517,7 +541,7 @@ class Signature: OpenPGPPacket {
                     }
                     dataStream.write( unhashedSubPacketsBytes )
 
-                    dataStream.writeShort( this.hashLeft2Bytes )
+                    dataStream.writeShort( this.hashLeft2Bytes.toInt() )
 
                     if( this.signatureVersion == 6 ){
                         dataStream.writeByte( this.salt.size )
@@ -556,6 +580,43 @@ class Signature: OpenPGPPacket {
             // ハッシュされていないサブパケットのエンコード
             for (subPacket in unhashedSubPackets) {
                 bytesStream.write(subPacket.encodedWithHeader)
+            }
+
+            return bytesStream.toByteArray()
+        }
+
+    val trailer: ByteArray
+        get() {
+            val bytesStream = ByteArrayOutputStream()
+            val dataStream = DataOutputStream(bytesStream)
+            dataStream.writeByte(this.signatureVersion)
+            when( this.signatureVersion ){
+                3->{
+                    dataStream.writeByte( this.signatureTypeId )
+                    dataStream.writeInt(this.creationTime)
+                }
+                4, 6->{
+                    dataStream.writeByte(this.signatureTypeId)
+                    dataStream.writeByte(this.keyAlgorithmId)
+                    dataStream.writeByte(this.hashAlgorithmId)
+
+                    val hashedSubPacketsBytes = this.encodedHashedPackets
+
+                    if(this.signatureVersion == 4){
+                        dataStream.writeShort( hashedSubPacketsBytes.size )
+                    }
+                    else{
+                        dataStream.writeInt( hashedSubPacketsBytes.size )
+                    }
+                    dataStream.write( hashedSubPacketsBytes )
+
+                    val hashDataLength = dataStream.size()
+
+                    dataStream.writeByte(this.signatureVersion)
+                    dataStream.writeByte(0xFF)
+                    dataStream.writeInt(hashDataLength)
+
+                }
             }
 
             return bytesStream.toByteArray()

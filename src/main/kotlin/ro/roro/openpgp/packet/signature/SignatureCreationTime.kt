@@ -1,10 +1,12 @@
 package ro.roro.openpgp.packet.signature
 
+import java.util.Calendar
+
 class SignatureCreationTime:SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.SIGNATURE_CREATION_TIME
 
     override val mustBeHashed: Boolean = true
-    override val shouldBeCritical: Boolean = true
+    override val shouldBeCritical: Boolean = false
 
     /**
      * 署名が作成された時間
@@ -14,6 +16,12 @@ class SignatureCreationTime:SignatureSubPacket {
 
     constructor(creationTime: Int) {
         this.creationTime = creationTime
+    }
+
+    constructor(creationTime: Calendar){
+        val time = creationTime.timeInMillis / 1000
+
+        this.creationTime = time.toInt()
     }
 
     /**
