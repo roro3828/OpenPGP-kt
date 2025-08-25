@@ -3,8 +3,7 @@ package ro.roro.openpgp.packet.signature
 class SignatureExpirationTime: SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.SIGNATURE_EXPIRATION_TIME
 
-    override val mustBeHashed: Boolean = false
-    override val shouldBeCritical: Boolean = true
+    override val critical: Boolean
 
     /**
      * 署名の有効期限
@@ -12,7 +11,8 @@ class SignatureExpirationTime: SignatureSubPacket {
      */
     val expirationTime: Int
 
-    constructor(creationTime: Int) {
+    constructor(creationTime: Int, critical: Boolean = SignatureSubPacket.SIGNATURE_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+        this.critical = critical
         this.expirationTime = creationTime
     }
 
@@ -22,7 +22,8 @@ class SignatureExpirationTime: SignatureSubPacket {
      * @throws IllegalArgumentException もしbytesが4バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray) {
+    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.SIGNATURE_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+        this.critical = critical
         if (bytes.size != 4) {
             throw IllegalArgumentException("SignatureExpirationTime must be 4 bytes long, but was ${bytes.size} bytes.")
         }

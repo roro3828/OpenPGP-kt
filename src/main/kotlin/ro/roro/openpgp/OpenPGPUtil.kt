@@ -94,7 +94,12 @@ class OpenPGPUtil {
 
             return bytesOutputStream.toByteArray()
         }
-
+        /**
+         * MPIのバイト列の長さ
+         */
+        fun readMPILen(bytes: ByteArrayInputStream): Int {
+            return readMPILen(DataInputStream(bytes))
+        }
         /**
          * MPIのバイト列の長さ
          */

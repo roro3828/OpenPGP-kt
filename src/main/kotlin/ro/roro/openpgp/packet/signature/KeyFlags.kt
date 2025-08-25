@@ -3,8 +3,7 @@ package ro.roro.openpgp.packet.signature
 class KeyFlags: SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.KEY_FLAGS
 
-    override val mustBeHashed: Boolean = false
-    override val shouldBeCritical: Boolean = true
+    override val critical: Boolean
 
     /**
      * キーフラグ
@@ -12,11 +11,13 @@ class KeyFlags: SignatureSubPacket {
      */
     val keyFlags: ByteArray
 
-    constructor(keyFlags: Byte){
+    constructor(keyFlags: Byte, critical: Boolean = SignatureSubPacket.KEY_FLAGS_SHOULD_BE_CRITICAL) {
         this.keyFlags = byteArrayOf(keyFlags)
+        this.critical = critical
     }
-    constructor(keyFlags: ByteArray) {
+    constructor(keyFlags: ByteArray, critical: Boolean = SignatureSubPacket.KEY_FLAGS_SHOULD_BE_CRITICAL) {
         this.keyFlags = keyFlags
+        this.critical = critical
     }
 
     override val encoded: ByteArray

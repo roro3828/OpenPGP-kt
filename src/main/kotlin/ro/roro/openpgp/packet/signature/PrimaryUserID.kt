@@ -3,12 +3,12 @@ package ro.roro.openpgp.packet.signature
 class PrimaryUserID: SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.PRIMARY_USER_ID
 
-    override val mustBeHashed: Boolean = false
-    override val shouldBeCritical: Boolean = false
+    override val critical: Boolean
 
     val isPrimary: Boolean
 
-    constructor( isPrimary: Boolean ){
+    constructor( isPrimary: Boolean, critical: Boolean = SignatureSubPacket.PRIMARY_USER_ID_SHOULD_BE_CRITICAL ){
+        this.critical = critical
         this.isPrimary = isPrimary
     }
 
@@ -18,10 +18,9 @@ class PrimaryUserID: SignatureSubPacket {
      * @throws IllegalArgumentException もしbyteが1バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor( byte: ByteArray ){
-        if( byte.size != 1 ){
-            throw IllegalArgumentException("PrimaryUserID must be 1 byte long, but was ${byte.size} bytes.")
-        }
+    constructor( byte: ByteArray, critical: Boolean = SignatureSubPacket.PRIMARY_USER_ID_SHOULD_BE_CRITICAL ){
+        this.critical = critical
+        require(byte.size == 1){ "PrimaryUserID must be 1 byte long, but was ${byte.size} bytes." }
         this.isPrimary = (byte[0] == 0x01.toByte())
     }
 

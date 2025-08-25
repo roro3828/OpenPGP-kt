@@ -7,8 +7,7 @@ import java.io.DataOutputStream
 class IssuerFingerprint: SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.ISSUER_FINGERPRINT
 
-    override val mustBeHashed: Boolean = false
-    override val shouldBeCritical: Boolean = false
+    override val critical: Boolean
 
     /**
      * 鍵のバージョン
@@ -20,16 +19,21 @@ class IssuerFingerprint: SignatureSubPacket {
      */
     val issuerFingerprint: ByteArray
 
-    constructor( keyVersion: Int, issuerFingerprint: ByteArray ){
-        if( !( keyVersion == 3 || keyVersion == 4 || keyVersion == 6 ) ){
-            throw IllegalArgumentException("Invalid key version: $keyVersion. Must be 3, 4, or 6.")
+    constructor( keyVersion: Int, issuerFingerprint: ByteArray, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL ){
+        require(keyVersion == 3 || keyVersion == 4 || keyVersion == 6) {
+            "Invalid key version: $keyVersion. Must be 3, 4, or 6."
         }
         this.keyVersion = keyVersion
+        require(PublicKey.getFingerprintSize(keyVersion) == issuerFingerprint.size) {
+            "Invalid fingerprint size: ${issuerFingerprint.size}. Must be ${PublicKey.getFingerprintSize(keyVersion)} bytes."
+        }
         this.issuerFingerprint = issuerFingerprint
+        this.critical = critical
     }
-    constructor( publicKeyPacket: PublicKey ){
+    constructor( publicKeyPacket: PublicKey, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL ){
         this.keyVersion = publicKeyPacket.keyVertion
         this.issuerFingerprint = publicKeyPacket.fingerprint
+        this.critical = critical
     }
 
     /**
@@ -38,7 +42,7 @@ class IssuerFingerprint: SignatureSubPacket {
      * @throws IllegalArgumentException bytesの長さが不正な場合
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray){
+    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL){
         try {
             this.keyVersion = PublicKey.getFingerprintVersion(bytes)
             this.issuerFingerprint = bytes
@@ -46,6 +50,8 @@ class IssuerFingerprint: SignatureSubPacket {
         catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid bytes for IssuerFingerprint: ${e.message}")
         }
+
+        this.critical = critical
     }
 
     override val encoded: ByteArray

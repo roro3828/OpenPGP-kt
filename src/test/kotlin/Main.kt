@@ -5,11 +5,13 @@ import ro.roro.openpgp.OpenPGPDigest
 import ro.roro.openpgp.OpenPGPPublicKeyAlgorithms
 import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.OpenPGPUtil
+import ro.roro.openpgp.OpenPGPVerifier
 import ro.roro.openpgp.packet.PublicKey
 import ro.roro.openpgp.packet.SecretKey
 import ro.roro.openpgp.packet.signature.IssuerKeyID
 import ro.roro.openpgp.packet.signature.Signature
 import ro.roro.openpgp.packet.signature.SignatureCreationTime
+import java.io.ByteArrayInputStream
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -30,18 +32,11 @@ fun main(){
     val publicKeyPacket = PublicKey.fromBytes(rfc9580SampleEd25519PublicKeyPacket)
     val secretKeyPacket = SecretKey(publicKeyPacket, rfc9580SampleEd25519Key.private)
 
-    val dataInput = byteArrayOf(0x4f.toByte(), 0x70.toByte(), 0x65.toByte(), 0x6e.toByte(), 0x50.toByte(), 0x47.toByte(), 0x50.toByte(), 0x04.toByte(), 0x00.toByte(), 0x16.toByte(), 0x08.toByte(), 0x00.toByte(), 0x06.toByte(), 0x05.toByte(), 0x02.toByte(), 0x55.toByte(), 0xf9.toByte(), 0x5f.toByte(), 0x95.toByte(), 0x04.toByte(), 0xff.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x0c.toByte())
-    val hashedData = OpenPGPDigest.getInstance(OpenPGPDigest.SHA256).digest(dataInput)
-
-    println(OpenPGPUtil.getHexString(hashedData))
-
     val signer = OpenPGPSigner(secretKeyPacket, BouncyCastleProvider())
-
-    println(OpenPGPUtil.getHexString(signer.sign(hashedData)))
 
     val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
     cal.set(2015, 8, 16, 12, 24, 53)
-    val creationtime = SignatureCreationTime(cal)
+    val creationtime = SignatureCreationTime(cal, false)
 
     val issuer = IssuerKeyID(secretKeyPacket.keyId)
 
@@ -55,5 +50,13 @@ fun main(){
         listOf(issuer)
     )
 
-    println(OpenPGPUtil.getHexString(signature.encoded))
+    val e = signature.encoded
+    println("Encoded signature: " + OpenPGPUtil.getHexString(e))
+    //e[e.size - 1] = 0x05.toByte() // Corrupt the signature for testing
+
+    val copyedSignature = Signature.fromBytes(ByteArrayInputStream(e))
+
+
+    val verifier = OpenPGPVerifier(secretKeyPacket.publicKey, BouncyCastleProvider())
+    println("Verify result: " + copyedSignature.verify("OpenPGP".toByteArray(), verifier).toString() )
 }

@@ -3,11 +3,13 @@ package ro.roro.openpgp.packet.signature
 import ro.roro.openpgp.OpenPGPDigest
 import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.OpenPGPUtil
+import ro.roro.openpgp.OpenPGPVerifier
 import ro.roro.openpgp.packet.OpenPGPPacket
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.security.SecureRandom
 
 /**
  *      +======+====================================+==================+
@@ -203,6 +205,26 @@ class Signature: OpenPGPPacket {
         }
     }
 
+    fun verify(data: ByteArray, verifier: OpenPGPVerifier): Boolean{
+
+        val hash = OpenPGPDigest.getInstance(hashAlgorithmId)
+        if(this.signatureVersion == 6){
+            hash.write(salt) // バージョン6ではソルトを入れる
+        }
+
+        hash.write(data)
+        hash.write(trailer.encoded)
+
+        val digest = hash.digest()
+
+        val left2Bytes = ((digest[0].toInt() and 0xFF shl 8) or (digest[1].toInt() and 0xFF)).toShort()
+        if( left2Bytes != this.hashLeft2Bytes ){
+            return false
+        }
+
+        return verifier.verify(digest, this.signatureValue)
+    }
+
     companion object{
         const val BINARY_SIGNATURE = 0x00
         const val TEXT_SIGNATURE = 0x01
@@ -253,6 +275,69 @@ class Signature: OpenPGPPacket {
                 trailer,
                 left2Bytes,
                 signatureValue,
+                unhashedSubPackets
+            )
+
+        }
+
+        /**
+         * バージョン6の署名を生成する
+         * @param data 署名対象のデータ
+         * @param signer 署名を行うOpenPGPSigner
+         * @param signatureTypeId 署名タイプID
+         * @param keyAlgorithmId 鍵アルゴリズムID
+         * @param hashAlgorithmId ハッシュアルゴリズムID
+         * @param hashedSubPackets ハッシュされたサブパケットのリスト
+         * @param unhashedSubPackets ハッシュされていないサブパケットのリスト
+         * @param salt ソルト値 鍵アルゴリズムに応じた長さのバイト配列を指定すること nullの場合はランダムに生成される
+         * @param passPhrase パスフレーズ
+         * @return 生成されたSignatureオブジェクト
+         */
+        fun getV6Signature(
+            data: ByteArray,
+            signer: OpenPGPSigner,
+            signatureTypeId: Int,
+            keyAlgorithmId: Int,
+            hashAlgorithmId: Int,
+            hashedSubPackets: List<SignatureSubPacket>?,
+            unhashedSubPackets: List<SignatureSubPacket>?,
+            salt: ByteArray? = null,
+            passPhrase: ByteArray? = null
+        ): Signature{
+
+            val saltSize = OpenPGPDigest.getInstance(keyAlgorithmId).saltSize
+            val saltValue = ByteArray(saltSize)
+            if(salt == null){
+                SecureRandom().nextBytes(saltValue)
+            }
+            else{
+                require(salt.size == saltSize) { "salt must be $saltSize bytes long for key algorithm $keyAlgorithmId." }
+                System.arraycopy(salt, 0, saltValue, 0, saltSize)
+            }
+
+            val trailer = SignatureTrailer(
+                6,
+                signatureTypeId,
+                keyAlgorithmId,
+                hashAlgorithmId,
+                hashedSubPackets
+            )
+
+            val hash = OpenPGPDigest.getInstance(hashAlgorithmId)
+            hash.write(saltValue) // バージョン6ではソルトを入れる
+            hash.write(data)
+            hash.write(trailer.encoded)
+
+            val digest = hash.digest()
+            val left2Bytes = ((digest[0].toInt() and 0xFF shl 8) or (digest[1].toInt() and 0xFF)).toShort()
+
+            val signatureValue = signer.sign(digest, passPhrase)
+
+            return Signature(
+                trailer,
+                left2Bytes,
+                signatureValue,
+                saltValue,
                 unhashedSubPackets
             )
 
@@ -416,11 +501,11 @@ class Signature: OpenPGPPacket {
 
                     when (subPacketType) {
                         SignatureSubPacket.SIGNATURE_CREATION_TIME -> {
-                            SignatureCreationTime(packetBytes)
+                            SignatureCreationTime(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.SIGNATURE_EXPIRATION_TIME -> {
-                            SignatureExpirationTime(packetBytes)
+                            SignatureExpirationTime(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.EXPORTABLE_CERTIFICATION -> {
@@ -440,15 +525,15 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.KEY_EXPIRATION_TIME -> {
-                            KeyExpirationTime(packetBytes)
+                            KeyExpirationTime(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.PREFERRED_SYMMETRIC_CIPHERS -> {
-                            PreferredSymmetricCiphersV1(packetBytes)
+                            PreferredSymmetricCiphersV1(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.ISSUER_KEY_ID -> {
-                            IssuerKeyID(packetBytes)
+                            IssuerKeyID(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.NOTATION_DATA -> {
@@ -456,15 +541,15 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.PREFERRED_HASH_ALGORITHMS -> {
-                            PreferredHashAlgorithms(packetBytes)
+                            PreferredHashAlgorithms(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.PREFERRED_COMPRESSION_ALGORITHMS -> {
-                            PreferredCompressionAlgorithms(packetBytes)
+                            PreferredCompressionAlgorithms(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.KEY_SERVER_PREFERENCES -> {
-                            KeyServerPreferences(packetBytes)
+                            KeyServerPreferences(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.PREFERRED_KEY_SERVER -> {
@@ -472,7 +557,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.PRIMARY_USER_ID -> {
-                            PrimaryUserID(packetBytes)
+                            PrimaryUserID(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.POLICY_URI -> {
@@ -480,7 +565,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.KEY_FLAGS -> {
-                            KeyFlags(packetBytes)
+                            KeyFlags(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.SIGNER_USER_ID -> {
@@ -492,7 +577,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.FEATURES -> {
-                            Features(packetBytes)
+                            Features(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.SIGNATURE_TARGET -> {
@@ -504,7 +589,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.ISSUER_FINGERPRINT -> {
-                            IssuerFingerprint(packetBytes)
+                            IssuerFingerprint(packetBytes, isCritical)
                         }
 
                         SignatureSubPacket.INTENDED_RECIPIENT_FINGERPRINT -> {
@@ -524,7 +609,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         else -> {
-                            UnKnownSubPacket(packetBytes)
+                            UnKnownSubPacket(subPacketType, packetBytes, isCritical)
                         }
                     }
                 }.fold(
@@ -536,7 +621,7 @@ class Signature: OpenPGPPacket {
                     }
                 )
 
-                if(isCritical && subPacket.subPacketType == SignatureSubPacket.UNKNOWN_SUBPACKET){
+                if(isCritical && subPacket.unKnown){
                     throw IllegalArgumentException("Unknown subpacket type $subPacketTypeId is critical")
                 }
 

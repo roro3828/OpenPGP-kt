@@ -95,18 +95,21 @@ interface SignatureSubPacket {
     /**
      * サブパケットのタイプ
      */
-    abstract val subPacketType: Int
+    val subPacketType: Int
 
-    open val mustBeHashed: Boolean
-        get() = false
-    open val shouldBeCritical: Boolean
-        get() = false
+    val critical: Boolean
 
     /**
      * サブパケットのエンコードされたバイト列
      * ヘッダを含まない
      */
-    abstract val encoded: ByteArray
+    val encoded: ByteArray
+
+    /**
+     * 不明なサブパケットかどうか
+     */
+    val unKnown: Boolean
+        get() = false
 
     /**
      * サブパケットのエンコードされたバイト列
@@ -121,7 +124,7 @@ interface SignatureSubPacket {
 
             dataOutputStream.write( packetLen )
 
-            if(this.shouldBeCritical){
+            if(this.critical){
                 dataOutputStream.writeByte( 0b10000000 or this.subPacketType )
             }
             else{
@@ -161,6 +164,33 @@ interface SignatureSubPacket {
         const val KEY_BLOCK = 38
         const val PREFERRED_AEAD_CIPHERSUITES = 39
 
-        const val UNKNOWN_SUBPACKET = -1
+        protected const val SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL = true
+        protected const val SIGNATURE_EXPIRATION_TIME_SHOULD_BE_CRITICAL = true
+        protected const val EXPORTABLE_CERTIFICATION_SHOULD_BE_CRITICAL = true
+        protected const val TRUST_SIGNATURE_SHOULD_BE_CRITICAL = false
+        protected const val REGULAR_EXPRESSION_SHOULD_BE_CRITICAL = true
+        protected const val REVOCABLE_SHOULD_BE_CRITICAL = false
+        protected const val KEY_EXPIRATION_TIME_SHOULD_BE_CRITICAL = true
+        protected const val PREFERRED_SYMMETRIC_CIPHERS_SHOULD_BE_CRITICAL = false
+        protected const val ISSUER_KEY_ID_SHOULD_BE_CRITICAL = false
+        protected const val NOTATION_DATA_SHOULD_BE_CRITICAL = false
+        protected const val PREFERRED_HASH_ALGORITHMS_SHOULD_BE_CRITICAL = false
+        protected const val PREFERRED_COMPRESSION_ALGORITHMS_SHOULD_BE_CRITICAL = false
+        protected const val KEY_SERVER_PREFERENCES_SHOULD_BE_CRITICAL = false
+        protected const val PREFERRED_KEY_SERVER_SHOULD_BE_CRITICAL = false
+        protected const val PRIMARY_USER_ID_SHOULD_BE_CRITICAL = false
+        protected const val POLICY_URI_SHOULD_BE_CRITICAL = false
+        protected const val KEY_FLAGS_SHOULD_BE_CRITICAL = true
+        protected const val SIGNER_USER_ID_SHOULD_BE_CRITICAL = false
+        protected const val REASON_FOR_REVOCATION_SHOULD_BE_CRITICAL = false
+        protected const val FEATURES_SHOULD_BE_CRITICAL = false
+        protected const val SIGNATURE_TARGET_SHOULD_BE_CRITICAL = false
+        protected const val EMBEDDED_SIGNATURE_SHOULD_BE_CRITICAL = false
+        protected const val ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL = false
+        protected const val INTENDED_RECIPIENT_FINGERPRINT_SHOULD_BE_CRITICAL = true
+        protected const val ATTESTED_CERTIFICATIONS_SHOULD_BE_CRITICAL = false
+        protected const val KEY_BLOCK_SHOULD_BE_CRITICAL = false
+        protected const val PREFERRED_AEAD_CIPHERSUITES_SHOULD_BE_CRITICAL = false
+
     }
 }

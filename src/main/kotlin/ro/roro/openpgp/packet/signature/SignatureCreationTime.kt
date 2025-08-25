@@ -5,8 +5,7 @@ import java.util.Calendar
 class SignatureCreationTime:SignatureSubPacket {
     override val subPacketType: Int = SignatureSubPacket.SIGNATURE_CREATION_TIME
 
-    override val mustBeHashed: Boolean = true
-    override val shouldBeCritical: Boolean = false
+    override val critical: Boolean
 
     /**
      * 署名が作成された時間
@@ -14,11 +13,13 @@ class SignatureCreationTime:SignatureSubPacket {
      */
     val creationTime: Int
 
-    constructor(creationTime: Int) {
+    constructor(creationTime: Int, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
         this.creationTime = creationTime
+        this.critical = critical
     }
 
-    constructor(creationTime: Calendar){
+    constructor(creationTime: Calendar, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
+        this.critical = critical
         val time = creationTime.timeInMillis / 1000
 
         this.creationTime = time.toInt()
@@ -30,7 +31,8 @@ class SignatureCreationTime:SignatureSubPacket {
      * @throws IllegalArgumentException もしbytesが4バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray){
+    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
+        this.critical = critical
         if (bytes.size != 4) {
             throw IllegalArgumentException("SignatureCreationTime must be 4 bytes long, but was ${bytes.size} bytes.")
         }
