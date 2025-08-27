@@ -6,12 +6,11 @@ class KeyExpirationTime: SignatureSubPacket {
     override val critical: Boolean
 
     /**
-     * 署名の有効期限
-     * Unix時間で表現される
+     * 有効期限
      */
     val expirationTime: Int
 
-    constructor(expirationTime: Int, critical: Boolean = SignatureSubPacket.KEY_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(expirationTime: Int, critical: Boolean = false) {
         this.expirationTime = expirationTime
         this.critical = critical
     }
@@ -22,7 +21,7 @@ class KeyExpirationTime: SignatureSubPacket {
      * @throws IllegalArgumentException もしbytesが4バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.KEY_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(bytes: ByteArray, critical: Boolean = false) {
         if (bytes.size != 4) {
             throw IllegalArgumentException("KeyExpirationTime must be 4 bytes long, but was ${bytes.size} bytes.")
         }

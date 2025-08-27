@@ -11,7 +11,7 @@ class SignatureExpirationTime: SignatureSubPacket {
      */
     val expirationTime: Int
 
-    constructor(creationTime: Int, critical: Boolean = SignatureSubPacket.SIGNATURE_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(creationTime: Int, critical: Boolean = false) {
         this.critical = critical
         this.expirationTime = creationTime
     }
@@ -22,7 +22,7 @@ class SignatureExpirationTime: SignatureSubPacket {
      * @throws IllegalArgumentException もしbytesが4バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.SIGNATURE_EXPIRATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(bytes: ByteArray, critical: Boolean = false) {
         this.critical = critical
         if (bytes.size != 4) {
             throw IllegalArgumentException("SignatureExpirationTime must be 4 bytes long, but was ${bytes.size} bytes.")

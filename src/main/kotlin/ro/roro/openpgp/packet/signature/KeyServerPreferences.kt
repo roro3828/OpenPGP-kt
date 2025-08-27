@@ -7,15 +7,19 @@ class KeyServerPreferences: SignatureSubPacket {
 
     val serverPreferences: ByteArray
 
-    constructor( serverPreferences: Byte = 0x80.toByte(), critical: Boolean = SignatureSubPacket.KEY_SERVER_PREFERENCES_SHOULD_BE_CRITICAL){
+    constructor( serverPreferences: Byte = NO_MODIFY, critical: Boolean = false){
         this.serverPreferences = byteArrayOf(serverPreferences)
         this.critical = critical
     }
-    constructor( serverPreferences: ByteArray, critical: Boolean = SignatureSubPacket.KEY_SERVER_PREFERENCES_SHOULD_BE_CRITICAL){
+    constructor( serverPreferences: ByteArray, critical: Boolean = false){
         this.critical = critical
         this.serverPreferences = serverPreferences
     }
 
     override val encoded: ByteArray
         get() = this.serverPreferences
+
+    companion object{
+        const val NO_MODIFY = 0x80.toByte()
+    }
 }

@@ -13,12 +13,12 @@ class SignatureCreationTime:SignatureSubPacket {
      */
     val creationTime: Int
 
-    constructor(creationTime: Int, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(creationTime: Int, critical: Boolean = false) {
         this.creationTime = creationTime
         this.critical = critical
     }
 
-    constructor(creationTime: Calendar, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(creationTime: Calendar, critical: Boolean = false) {
         this.critical = critical
         val time = creationTime.timeInMillis / 1000
 
@@ -31,7 +31,7 @@ class SignatureCreationTime:SignatureSubPacket {
      * @throws IllegalArgumentException もしbytesが4バイトでない場合にスローされる
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.SIGNATURE_CREATION_TIME_SHOULD_BE_CRITICAL) {
+    constructor(bytes: ByteArray, critical: Boolean = false) {
         this.critical = critical
         if (bytes.size != 4) {
             throw IllegalArgumentException("SignatureCreationTime must be 4 bytes long, but was ${bytes.size} bytes.")

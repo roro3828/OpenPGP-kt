@@ -1,7 +1,6 @@
 package ro.roro.openpgp.packet
 
 import ro.roro.openpgp.OpenPGPDigest
-import ro.roro.openpgp.OpenPGPPublicKeyAlgorithms
 import ro.roro.openpgp.OpenPGPS2K
 import ro.roro.openpgp.OpenPGPSymmetricKeyAlgorithm
 import ro.roro.openpgp.OpenPGPUtil
@@ -9,6 +8,7 @@ import java.io.ByteArrayInputStream
 import java.io.DataInputStream
 import java.security.KeyPair
 import java.security.PrivateKey
+import java.util.Calendar
 
 open class SecretKey:OpenPGPPacket {
     override val packetType = OpenPGPPacket.SECRET_KEY
@@ -131,11 +131,41 @@ open class SecretKey:OpenPGPPacket {
         keyPair: KeyPair,
         version: Int = 6
     ){
-        if( version != 6 && version != 4){
-            throw IllegalArgumentException("This library only supports generating version 4 or 6 keys")
-        }
+        require(version == 4 || version == 6){ "This library only supports generating version 4 or 6 keys"}
 
-        this.publicKey = PublicKey(creationTime, keyAlgo, keyPair.public, version)
+
+        this.publicKey = PublicKey(
+            version,
+            creationTime,
+            keyAlgo,
+            keyPair.public
+        )
+
+        this.secretKeyData = null
+        this.secretKey = keyPair.private
+    }
+    /**
+     * 秘密鍵を作成する
+     * @param creationTime 鍵の作成時間
+     * @param keyAlgo 鍵のアルゴリズム (OpenPGPPublicKeyAlgorithms)
+     * @param keyPair 鍵ペア
+     * @param version 鍵のバージョン (デフォルト: 6)
+     */
+    constructor(
+        creationTime: Calendar,
+        keyAlgo: Int,
+        keyPair: KeyPair,
+        version: Int = 6
+    ){
+        require(version == 4 || version == 6){ "This library only supports generating version 4 or 6 keys"}
+
+
+        this.publicKey = PublicKey(
+            version,
+            creationTime,
+            keyAlgo,
+            keyPair.public
+        )
 
         this.secretKeyData = null
         this.secretKey = keyPair.private
@@ -288,35 +318,35 @@ open class SecretKey:OpenPGPPacket {
         }
 
         when(this.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.RSA_GENERAL -> {
+            PublicKey.RSA_GENERAL -> {
                 TODO("RSA is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.DSA -> {
+            PublicKey.DSA -> {
                 TODO("DSA is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ELGAMAL_ENCRYPT -> {
+            PublicKey.ELGAMAL_ENCRYPT -> {
                 TODO("ELGAMAL_ENCRYPT is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ECDSA -> {
+            PublicKey.ECDSA -> {
                 TODO("ECDSA is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ECDH -> {
+            PublicKey.ECDH -> {
                 TODO("ECDH is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+            PublicKey.EDDSA_LEGACY -> {
                 val rawKeyData = this.secretKey.encoded.sliceArray((this.secretKey.encoded.size) - 32 until this.secretKey.encoded.size)
                 return OpenPGPUtil.toMPI(rawKeyData)
             }
-            OpenPGPPublicKeyAlgorithms.X25519 -> {
+            PublicKey.X25519 -> {
                 TODO("X25519 is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.X448 -> {
+            PublicKey.X448 -> {
                 TODO("X448 is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.Ed25519 -> {
+            PublicKey.Ed25519 -> {
                 TODO("Ed25519 is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.Ed448 -> {
+            PublicKey.Ed448 -> {
                 TODO("Ed448 is not supported yet")
             }
             else -> {
@@ -341,22 +371,22 @@ open class SecretKey:OpenPGPPacket {
 
         fun bytesToPrivateKey(algorithm: Int, dataInputStream: DataInputStream): PrivateKey {
             when(algorithm){
-                OpenPGPPublicKeyAlgorithms.RSA_GENERAL -> {
+                PublicKey.RSA_GENERAL -> {
                     TODO("RSA_GENERAL is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.DSA -> {
+                PublicKey.DSA -> {
                     TODO("DSA is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ELGAMAL_ENCRYPT -> {
+                PublicKey.ELGAMAL_ENCRYPT -> {
                     TODO("ELGAMAL_ENCRYPT is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ECDSA -> {
+                PublicKey.ECDSA -> {
                     TODO("ECDSA is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ECDH -> {
+                PublicKey.ECDH -> {
                     TODO("ECDH is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+                PublicKey.EDDSA_LEGACY -> {
                     val mpi = OpenPGPUtil.readMPI(dataInputStream)
                     val ed25519Seed = mpi.toByteArray()
 
@@ -364,16 +394,16 @@ open class SecretKey:OpenPGPPacket {
 
                     return keyPair.private
                 }
-                OpenPGPPublicKeyAlgorithms.X25519 -> {
+                PublicKey.X25519 -> {
                     TODO("X25519 is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.X448 -> {
+                PublicKey.X448 -> {
                     TODO("X448 is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.Ed25519 -> {
+                PublicKey.Ed25519 -> {
                     TODO("Ed25519 is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.Ed448 -> {
+                PublicKey.Ed448 -> {
                     TODO("Ed448 is not supported yet")
                 }
                 else -> {

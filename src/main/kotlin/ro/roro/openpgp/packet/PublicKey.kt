@@ -1,6 +1,5 @@
 package ro.roro.openpgp.packet
 
-import ro.roro.openpgp.OpenPGPPublicKeyAlgorithms
 import org.bouncycastle.asn1.edec.EdECObjectIdentifiers
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
@@ -8,6 +7,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import ro.roro.openpgp.OpenPGPDigest
 import ro.roro.openpgp.OpenPGPECCCurveOIDs
 import ro.roro.openpgp.OpenPGPUtil
+import ro.roro.openpgp.packet.signature.Signature
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -17,6 +17,7 @@ import java.security.KeyFactory
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.RSAPublicKeySpec
 import java.security.spec.X509EncodedKeySpec
+import java.util.Calendar
 
 /**
  *    +===+==============+=========+============+===========+=============+
@@ -161,7 +162,7 @@ open class PublicKey:OpenPGPPacket {
      * 0の場合は無期限
      * バージョン2か3でのみ使われる
      */
-    val validDays: Int
+    val validDays: Short
 
     /**
      * 鍵のアルゴリズム
@@ -173,93 +174,144 @@ open class PublicKey:OpenPGPPacket {
      */
     val key:java.security.PublicKey
 
+    /**
+     * 鍵バージョン3のコンストラクタ
+     * @param creationTime 鍵が作成された時間
+     * @param validDays 鍵の有効期限 (単位は日)
+     * @param keyAlgo 鍵のアルゴリズム
+     * @param key 公開鍵
+     */
+    protected constructor(
+        creationTime: Calendar,
+        validDays: Short,
+        keyAlgo: Int,
+        key: java.security.PublicKey
+    ){
+        this.keyVertion = 3
+        this.creationTime = (creationTime.timeInMillis / 1000).toInt()
+        this.validDays = validDays
+        this.keyAlgo = keyAlgo
+        this.key = key
+        require(isAlgorithmMatch(this.keyAlgo, this.key.algorithm)) {
+            "keyAlgo ${this.keyAlgo} does not match key algorithm ${this.key.algorithm}"
+        }
+
+        require(keyAlgo == RSA_GENERAL || keyAlgo == RSA_SIGN_ONLY || keyAlgo == RSA_ENCRYPT_ONLY) {
+            "For key version 3, only RSA algorithms (1, 2, 3) are supported. Provided: $keyAlgo"
+        }
+    }
+    /**
+     * 鍵バージョン3のコンストラクタ
+     * @param creationTime 鍵が作成された時間
+     * @param validDays 鍵の有効期限 (単位は日)
+     * @param keyAlgo 鍵のアルゴリズム
+     * @param key 公開鍵
+     */
+    protected constructor(
+        creationTime: Int,
+        validDays: Short,
+        keyAlgo: Int,
+        key: java.security.PublicKey
+    ){
+        this.keyVertion = 3
+        this.creationTime = creationTime
+        this.validDays = validDays
+        this.keyAlgo = keyAlgo
+        this.key = key
+        require(isAlgorithmMatch(this.keyAlgo, this.key.algorithm)) {
+            "keyAlgo ${this.keyAlgo} does not match key algorithm ${this.key.algorithm}"
+        }
+
+        require(keyAlgo == RSA_GENERAL || keyAlgo == RSA_SIGN_ONLY || keyAlgo == RSA_ENCRYPT_ONLY) {
+            "For key version 3, only RSA algorithms (1, 2, 3) are supported. Provided: $keyAlgo"
+        }
+    }
 
     /**
-     * 鍵のバージョン
-     * @param version 鍵のバージョン
+     * 鍵バージョン4か6のコンストラクタ
+     * @param version 鍵バージョン (4か6)
      * @param creationTime 鍵が作成された時間
      * @param keyAlgo 鍵のアルゴリズム
-     * @param validDays 鍵の有効期限 (単位は日) バージョン3でのみ使われる
      * @param key 公開鍵
-     * @throws IllegalArgumentException versionが3,4,6以外の場合
      */
-    @Throws(IllegalArgumentException::class)
-    constructor(creationTime: Int,
-                keyAlgo: Int,
-                key: java.security.PublicKey,
-                version: Int = 6,
-                validDays: Int = 0){
+    constructor(
+        version: Int,
+        creationTime: Calendar,
+        keyAlgo: Int,
+        key: java.security.PublicKey
+    ){
         this.keyVertion = version
-        if(version != 3 && version != 4 && version != 6){
-            throw IllegalArgumentException("version must be 3,4 or 6")
-        }
-
-        // 鍵のバージョンが3以外の時はvalidDaysは使わない
-        if(version == 3){
-            this.validDays = validDays
-
-            if(key.algorithm!="RSA" || keyAlgo != OpenPGPPublicKeyAlgorithms.RSA_GENERAL){
-                throw IllegalArgumentException("Algorithm must be RSA and keyAlgo must be 1")
-            }
-        }
-        else{
-            this.validDays = 0
-        }
-
+        this.creationTime = (creationTime.timeInMillis / 1000).toInt()
         this.keyAlgo = keyAlgo
-
-        this.creationTime = creationTime
         this.key = key
+        this.validDays = 0
+        require(isAlgorithmMatch(this.keyAlgo, this.key.algorithm)) {
+            "keyAlgo ${this.keyAlgo} does not match key algorithm ${this.key.algorithm}"
+        }
+        require(this.keyVertion == 4 || this.keyVertion == 6) {
+            "Only key versions 4 and 6 are supported in this constructor. Provided: $version"
+        }
     }
+    /**
+     * 鍵バージョン4か6のコンストラクタ
+     * @param version 鍵バージョン (4か6)
+     * @param creationTime 鍵が作成された時間
+     * @param keyAlgo 鍵のアルゴリズム
+     * @param key 公開鍵
+     */
+    constructor(
+        version: Int,
+        creationTime: Int,
+        keyAlgo: Int,
+        key: java.security.PublicKey
+    ){
+        this.keyVertion = version
+        this.creationTime = creationTime
+        this.keyAlgo = keyAlgo
+        this.key = key
+        this.validDays = 0
+        require(isAlgorithmMatch(this.keyAlgo, this.key.algorithm)) {
+            "keyAlgo ${this.keyAlgo} does not match key algorithm ${this.key.algorithm}"
+        }
+        require(this.keyVertion == 4 || this.keyVertion == 6) {
+            "Only key versions 4 and 6 are supported in this constructor. Provided: $version"
+        }
+    }
+
 
     override val encoded: ByteArray
         get(){
+            val bytes = ByteArrayOutputStream()
+            val dataOutput = DataOutputStream(bytes)
             when(this.keyVertion){
                 3->{
-                    return byteArrayOf(
-                        this.keyVertion.toByte(),
-                        (this.creationTime shr 24).toByte(),
-                        (this.creationTime shr 16).toByte(),
-                        (this.creationTime shr 8).toByte(),
-                        this.creationTime.toByte(),
-                        (this.validDays shr 8).toByte(),
-                        this.validDays.toByte(),
-                        this.keyAlgo.toByte(),
-                        *getKeyMaterial()
-                    )
+                    dataOutput.writeByte(this.keyVertion)
+                    dataOutput.writeInt(this.creationTime)
+                    dataOutput.writeShort(this.validDays.toInt())
+                    dataOutput.writeByte(this.keyAlgo)
+                    dataOutput.write( getKeyMaterial() )
                 }
                 4->{
-                    return byteArrayOf(
-                        this.keyVertion.toByte(),
-                        (this.creationTime shr 24).toByte(),
-                        (this.creationTime shr 16).toByte(),
-                        (this.creationTime shr 8).toByte(),
-                        this.creationTime.toByte(),
-                        this.keyAlgo.toByte(),
-                        *getKeyMaterial()
-                    )
+                    dataOutput.writeByte(this.keyVertion)
+                    dataOutput.writeInt(this.creationTime)
+                    dataOutput.writeByte(this.keyAlgo)
+                    dataOutput.write( getKeyMaterial() )
                 }
                 6->{
                     val keyMaterial = getKeyMaterial()
                     val keyMaterialLen = keyMaterial.size
-                    return byteArrayOf(
-                        this.keyVertion.toByte(),
-                        (this.creationTime shr 24).toByte(),
-                        (this.creationTime shr 16).toByte(),
-                        (this.creationTime shr 8).toByte(),
-                        this.creationTime.toByte(),
-                        this.keyAlgo.toByte(),
-                        (keyMaterialLen shr 24).toByte(),
-                        (keyMaterialLen shr 16).toByte(),
-                        (keyMaterialLen shr 8).toByte(),
-                        keyMaterialLen.toByte(),
-                        *keyMaterial
-                    )
+                    dataOutput.writeByte(this.keyVertion)
+                    dataOutput.writeInt(this.creationTime)
+                    dataOutput.writeByte(this.keyAlgo)
+                    dataOutput.writeInt(keyMaterialLen)
+                    dataOutput.write( keyMaterial )
                 }
                 else -> {
                     throw IllegalArgumentException("version must be 3,4 or 6")
                 }
             }
+
+            return bytes.toByteArray()
         }
 
     /**
@@ -301,7 +353,8 @@ open class PublicKey:OpenPGPPacket {
                     val packetLen = packetBytes.size
                     val sha1 = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1)
 
-                    sha1.writeByte(0x99)
+
+                    sha1.writeByte(Signature.PUBLICKEY_V4_SIGNATURE_PREFIX)
                     sha1.writeShort(packetLen)
                     sha1.write(packetBytes)
 
@@ -314,7 +367,7 @@ open class PublicKey:OpenPGPPacket {
                     val packetLen = packetBytes.size
                     val sha256 = OpenPGPDigest.getInstance(OpenPGPDigest.SHA256)
 
-                    sha256.writeByte(0x9b)
+                    sha256.writeByte(Signature.PUBLICKEY_V6_SIGNATURE_PREFIX)
                     sha256.writeInt(packetLen)
                     sha256.write(packetBytes)
 
@@ -381,7 +434,7 @@ open class PublicKey:OpenPGPPacket {
     @Throws(IllegalArgumentException::class)
     private fun getKeyMaterial(): ByteArray{
         when(this.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.RSA_GENERAL -> {
+            RSA_GENERAL -> {
                 val rsaKey = this.key as RSAPublicKey
                 val modulus = rsaKey.modulus
                 val exponent = rsaKey.publicExponent
@@ -392,19 +445,19 @@ open class PublicKey:OpenPGPPacket {
                     *OpenPGPUtil.toMPI( exponent )
                 )
             }
-            OpenPGPPublicKeyAlgorithms.DSA -> {
+            DSA -> {
                 TODO("DSA is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ELGAMAL_ENCRYPT -> {
+            ELGAMAL_ENCRYPT -> {
                 TODO("ELGAMAL_ENCRYPT is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ECDSA -> {
+            ECDSA -> {
                 TODO("ECDSA is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.ECDH -> {
+            ECDH -> {
                 TODO("ECDH is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+            EDDSA_LEGACY -> {
                 val outputStream = ByteArrayOutputStream()
                 val dataOutputStream = DataOutputStream(outputStream)
 
@@ -419,13 +472,13 @@ open class PublicKey:OpenPGPPacket {
 
                 return outputStream.toByteArray()
             }
-            OpenPGPPublicKeyAlgorithms.X25519 -> {
+            X25519 -> {
                 TODO("X25519 is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.X448 -> {
+            X448 -> {
                 TODO("X448 is not supported yet")
             }
-            OpenPGPPublicKeyAlgorithms.Ed25519 -> {
+            Ed25519 -> {
                 val ed25519Key = this.key
 
                 if( ed25519Key.format != "X.509" ){
@@ -435,7 +488,7 @@ open class PublicKey:OpenPGPPacket {
 
                 return OpenPGPUtil.getRawEd25519PublicKey( encodedKey )
             }
-            OpenPGPPublicKeyAlgorithms.Ed448 -> {
+            Ed448 -> {
                 TODO("Ed448 is not supported yet")
             }
             else -> {
@@ -445,6 +498,37 @@ open class PublicKey:OpenPGPPacket {
     }
 
     companion object{
+
+        const val RSA_GENERAL = 1
+        const val RSA_ENCRYPT_ONLY = 2
+        const val RSA_SIGN_ONLY = 3
+        const val ELGAMAL_ENCRYPT = 16
+        const val DSA = 17
+        const val ECDH = 18
+        const val ECDSA = 19
+        const val EDDSA_LEGACY = 22
+        const val X25519 = 25
+        const val X448 = 26
+        const val Ed25519 = 27
+        const val Ed448 = 28
+
+        /**
+         * PublikKey Algorithm Tag とPublicKeyのアルゴリズム名が一致しているかどうか
+         */
+        fun isAlgorithmMatch(algorithmTag: Int, algorithmName: String): Boolean{
+            return when(algorithmTag){
+                RSA_GENERAL, RSA_ENCRYPT_ONLY, RSA_SIGN_ONLY -> algorithmName == "RSA"
+                ELGAMAL_ENCRYPT -> algorithmName == "ElGamal"
+                DSA -> algorithmName == "DSA"
+                ECDH -> algorithmName == "ECDH"
+                ECDSA -> algorithmName == "ECDSA"
+                EDDSA_LEGACY, Ed25519 -> algorithmName == "Ed25519"
+                X25519 -> algorithmName == "X25519"
+                X448 -> algorithmName == "X448"
+                Ed448 -> algorithmName == "Ed448"
+                else -> false
+            }
+        }
 
         /**
          * バイト列からPublicKeyパケットへ変換する
@@ -483,13 +567,13 @@ open class PublicKey:OpenPGPPacket {
 
                 val key = bytesToPublicKey(keyAlgo, body )
 
-                return PublicKey(creationTime, keyAlgo, key, version, validDays)
+                return PublicKey(creationTime, validDays.toShort(), keyAlgo, key)
             }
             else if( version == 4 ){
                 val keyAlgo = body.readUnsignedByte()
                 val key = bytesToPublicKey(keyAlgo, body )
 
-                return PublicKey(creationTime, keyAlgo, key, version)
+                return PublicKey(4, creationTime, keyAlgo, key)
             }
             else if( version == 6 ){
                 val keyAlgo = body.readUnsignedByte()
@@ -500,7 +584,7 @@ open class PublicKey:OpenPGPPacket {
                 }
                 val key = bytesToPublicKey(keyAlgo, body )
 
-                return PublicKey(creationTime, keyAlgo, key, version)
+                return PublicKey(6, creationTime, keyAlgo, key)
             }
             else{
                 throw IllegalArgumentException("version must be 3,4 or 6")
@@ -547,7 +631,7 @@ open class PublicKey:OpenPGPPacket {
         }
         private fun bytesToPublicKey(algorithm: Int, dataInputStream: DataInputStream): java.security.PublicKey {
             when(algorithm){
-                OpenPGPPublicKeyAlgorithms.RSA_GENERAL -> {
+                RSA_GENERAL -> {
                     val modulus = OpenPGPUtil.readMPI(dataInputStream)
 
                     val exponent = OpenPGPUtil.readMPI(dataInputStream)
@@ -559,19 +643,19 @@ open class PublicKey:OpenPGPPacket {
 
                     return rsaPublicKey
                 }
-                OpenPGPPublicKeyAlgorithms.DSA -> {
+                DSA -> {
                     TODO("DSA is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ELGAMAL_ENCRYPT -> {
+                ELGAMAL_ENCRYPT -> {
                     TODO("ELGAMAL_ENCRYPT is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ECDSA -> {
+                ECDSA -> {
                     TODO("ECDSA is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.ECDH -> {
+                ECDH -> {
                     TODO("ECDH is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+                EDDSA_LEGACY -> {
                     val oidLen = dataInputStream.readUnsignedByte()
                     val oid = dataInputStream.readNBytes(oidLen)
 
@@ -603,13 +687,13 @@ open class PublicKey:OpenPGPPacket {
 
                     return publicKey
                 }
-                OpenPGPPublicKeyAlgorithms.X25519 -> {
+                X25519 -> {
                     TODO("X25519 is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.X448 -> {
+                X448 -> {
                     TODO("X448 is not supported yet")
                 }
-                OpenPGPPublicKeyAlgorithms.Ed25519 -> {
+                Ed25519 -> {
                     // Ed25519の生の32バイトの公開鍵を読み取る
                     val rawPublicKey = dataInputStream.readNBytes(32)
 
@@ -623,7 +707,7 @@ open class PublicKey:OpenPGPPacket {
 
                     return publicKey
                 }
-                OpenPGPPublicKeyAlgorithms.Ed448 -> {
+                Ed448 -> {
                     TODO("Ed448 is not supported yet")
                 }
                 else -> {
@@ -631,9 +715,5 @@ open class PublicKey:OpenPGPPacket {
                 }
             }
         }
-
     }
-
-
-
 }

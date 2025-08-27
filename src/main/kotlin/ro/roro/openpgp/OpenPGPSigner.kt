@@ -1,8 +1,7 @@
 package ro.roro.openpgp
 
+import ro.roro.openpgp.packet.PublicKey
 import ro.roro.openpgp.packet.SecretKey
-import ro.roro.openpgp.packet.signature.SignatureSubPacket
-import java.io.ByteArrayOutputStream
 import java.security.Provider
 import java.security.Security
 import java.security.Signature
@@ -23,11 +22,9 @@ class OpenPGPSigner{
     }
 
     constructor(secretKey: SecretKey, providerName: String){
-        val provider = Security.getProvider(providerName)
+        val provider =
+            Security.getProvider(providerName) ?: throw IllegalArgumentException("Provider $providerName not found")
 
-        if(provider == null){
-            throw IllegalArgumentException("Provider $providerName not found")
-        }
         this.provider = provider
         this.secretKey = secretKey
     }
@@ -48,8 +45,8 @@ class OpenPGPSigner{
         }
 
         val algorithm = when(secretKey.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.Ed25519,
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> "Ed25519"
+            PublicKey.Ed25519,
+            PublicKey.EDDSA_LEGACY -> "Ed25519"
             else -> throw Error("Unsupported algorithm: ${secretKey.keyAlgo}")
         }
 
@@ -67,7 +64,7 @@ class OpenPGPSigner{
         }
 
         val signatureValue = when(secretKey.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+            PublicKey.EDDSA_LEGACY -> {
                 // Ed25519の署名は64バイトのRとSの連結
                 // OpenPGPではMPIとして格納するため、先頭に2バイトの長さを付与する
                 val r = signature.sliceArray(0 until 32)

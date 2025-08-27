@@ -242,6 +242,13 @@ class Signature: OpenPGPPacket {
         const val TIMESTAMP_SIGNATURE = 0x40
         const val THIRD_PARTY_CONFIRMATION_SIGNATURE = 0x50
 
+        // 署名パケットのシグネチャの前に付与されるプレフィックス https://www.rfc-editor.org/rfc/rfc9580.html#name-computing-signatures
+        const val PUBLICKEY_V4_SIGNATURE_PREFIX = 0x99
+        const val PUBLICKEY_V6_SIGNATURE_PREFIX = 0x9B
+
+        const val USER_ID_CERTIFICATION_PREFIX = 0xB4
+        const val USER_ID_ATTRIBUTE_CERT_PREFIX = 0xD1
+
 
         fun getV4Signature(
             data: ByteArray,
@@ -489,7 +496,7 @@ class Signature: OpenPGPPacket {
             val subPackets = mutableListOf<SignatureSubPacket>()
             while (0 < dataInputStream.available()) {
 
-                val length = OpenPGPUtil.getPacketLen(dataInputStream)
+                val length = OpenPGPUtil.readPacketLen(dataInputStream)
 
                 val subPacketTypeId = dataInputStream.readByte().toInt()
                 val subPacketType = subPacketTypeId and 0b01111111 // タイプの下位7ビットを取得

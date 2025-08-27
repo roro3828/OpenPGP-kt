@@ -7,6 +7,7 @@ import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import ro.roro.openpgp.packet.OpenPGPPacket
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -16,9 +17,15 @@ import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
+import kotlin.io.encoding.Base64
 
 class OpenPGPUtil {
     companion object{
+        const val CRC24_INIT= 0xB704CE
+        const val CRC24_GENERATOR=0x864CFB
+
+
+
         private const val TAG = "OpenPGPUtil"
 
         fun getHexString(bytes: ByteArray, limitLen: Int = 100): String {
@@ -39,60 +46,6 @@ class OpenPGPUtil {
             }
 
             return dbg.toString()
-        }
-
-        /**
-         * OpenPGPのパケット長を取得する
-         * @param bytes パケットのバイト列
-         * @return パケットの長さ
-         */
-        fun getPacketLen(bytes: ByteArrayInputStream): Int{
-            return getPacketLen(DataInputStream(bytes))
-        }
-        /**
-         * OpenPGPのパケット長を取得する
-         * @param dataInputStream パケットのDataInputStream
-         * @return パケットの長さ
-         */
-        fun getPacketLen(dataInputStream: DataInputStream): Int {
-            val firstByte = dataInputStream.readUnsignedByte()
-
-            if(firstByte < 192){
-                return firstByte
-            }
-            else if(firstByte < 0xFF){
-                val secondByte = dataInputStream.readUnsignedByte()
-                return ((firstByte - 192) shl 8 ) + secondByte + 192
-            }
-
-            else{
-                val len = dataInputStream.readInt()
-                return len
-            }
-        }
-        /**
-         * OpenPGPのパケット長をバイト列に変換する
-         */
-        fun toPacketLen(len: Int): ByteArray{
-            val bytesOutputStream = ByteArrayOutputStream()
-            val dataOutputStream = DataOutputStream(bytesOutputStream)
-
-            if(len < 192){
-                // 0-191の範囲
-                dataOutputStream.writeByte(len)
-            }
-            else if(len <= 16319){
-                // 192-7936
-                val fixed = len - 192
-                dataOutputStream.writeByte(( fixed ushr 8 ) + 192 )
-                dataOutputStream.writeByte(fixed % 0x0100 )
-            }
-            else{
-                dataOutputStream.writeByte(0xFF)
-                dataOutputStream.writeInt(len)
-            }
-
-            return bytesOutputStream.toByteArray()
         }
         /**
          * MPIのバイト列の長さ
@@ -214,6 +167,89 @@ class OpenPGPUtil {
             // 5. KeyPairオブジェクトを作成して返す
             val keyPair = KeyPair(publicKey, privateKey)
             return keyPair
+        }
+
+        /**
+         * OpenPGPのパケット長を取得する
+         * @param bytes パケットのバイト列
+         * @return パケットの長さ
+         */
+        fun readPacketLen(bytes: ByteArrayInputStream): Int{
+            return readPacketLen(DataInputStream(bytes))
+        }
+        /**
+         * OpenPGPのパケット長を取得する
+         * @param dataInputStream パケットのDataInputStream
+         * @return パケットの長さ
+         */
+        fun readPacketLen(dataInputStream: DataInputStream): Int {
+            val firstByte = dataInputStream.readUnsignedByte()
+
+            if(firstByte < 192){
+                return firstByte
+            }
+            else if(firstByte < 0xFF){
+                val secondByte = dataInputStream.readUnsignedByte()
+                return ((firstByte - 192) shl 8 ) + secondByte + 192
+            }
+
+            else{
+                val len = dataInputStream.readInt()
+                return len
+            }
+        }
+        /**
+         * OpenPGPのパケット長をバイト列に変換する
+         */
+        fun toPacketLen(len: Int): ByteArray{
+            val bytesOutputStream = ByteArrayOutputStream()
+            val dataOutputStream = DataOutputStream(bytesOutputStream)
+
+            if(len < 192){
+                // 0-191の範囲
+                dataOutputStream.writeByte(len)
+            }
+            else if(len <= 16319){
+                // 192-7936
+                val fixed = len - 192
+                dataOutputStream.writeByte(( fixed ushr 8 ) + 192 )
+                dataOutputStream.writeByte(fixed % 0x0100 )
+            }
+            else{
+                dataOutputStream.writeByte(0xFF)
+                dataOutputStream.writeInt(len)
+            }
+
+            return bytesOutputStream.toByteArray()
+        }
+
+        /**
+         * CRCを計算する
+         * @param data CRCを計算するデータ
+         * @return CRCのバイト列 (3バイト)
+         */
+        fun calcCRC(data: ByteArray): ByteArray{
+            var crc = CRC24_INIT
+            for(byte in data){
+                crc = (crc xor ((byte.toInt() and 0xFF) shl 16)) and 0xFFFFFF
+
+                for(j in 0 until 8){
+                    crc = (crc shl 1)
+                    if((crc and 0x1000000) != 0){
+                        crc = (crc xor CRC24_GENERATOR) and 0xFFFFFF
+                    }
+                }
+            }
+
+            return byteArrayOf(
+                ((crc ushr 16) and 0xFF).toByte(),
+                ((crc ushr 8) and 0xFF).toByte(),
+                (crc and 0xFF).toByte(),
+            )
+        }
+
+        fun toBase64(data: ByteArray): String{
+            return Base64.encode(data)
         }
 
         const val ED25519_PUBLIC_KEY_LENGTH = 32

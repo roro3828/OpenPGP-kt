@@ -10,15 +10,15 @@ class PreferredSymmetricCiphersV1: SignatureSubPacket {
 
     val algorithms: ByteArray
 
-    constructor( algorithm: Int, critical: Boolean = SignatureSubPacket.PREFERRED_SYMMETRIC_CIPHERS_SHOULD_BE_CRITICAL ){
+    constructor( algorithm: Int, critical: Boolean = false){
         this.critical = critical
         this.algorithms = byteArrayOf(algorithm.toByte())
     }
-    constructor( algorithm: Byte, critical: Boolean = SignatureSubPacket.PREFERRED_SYMMETRIC_CIPHERS_SHOULD_BE_CRITICAL ){
+    constructor( algorithm: Byte, critical: Boolean = false){
         this.critical = critical
         this.algorithms = byteArrayOf(algorithm)
     }
-    constructor( algorithms: ByteArray, critical: Boolean = SignatureSubPacket.PREFERRED_SYMMETRIC_CIPHERS_SHOULD_BE_CRITICAL ){
+    constructor( algorithms: ByteArray, critical: Boolean = false){
         this.critical = critical
         this.algorithms = algorithms
     }

@@ -10,15 +10,15 @@ class PreferredCompressionAlgorithms: SignatureSubPacket {
 
     val algorithms: ByteArray
 
-    constructor( algorithm: Int, critical: Boolean = SignatureSubPacket.PREFERRED_COMPRESSION_ALGORITHMS_SHOULD_BE_CRITICAL ){
+    constructor( algorithm: Int, critical: Boolean = false){
         this.algorithms = byteArrayOf(algorithm.toByte())
         this.critical = critical
     }
-    constructor( algorithm: Byte, critical: Boolean = SignatureSubPacket.PREFERRED_COMPRESSION_ALGORITHMS_SHOULD_BE_CRITICAL ){
+    constructor( algorithm: Byte, critical: Boolean = false){
         this.critical = critical
         this.algorithms = byteArrayOf(algorithm)
     }
-    constructor( algorithms: ByteArray, critical: Boolean = SignatureSubPacket.PREFERRED_COMPRESSION_ALGORITHMS_SHOULD_BE_CRITICAL ){
+    constructor( algorithms: ByteArray, critical: Boolean = false){
         this.critical = critical
         this.algorithms = algorithms
     }

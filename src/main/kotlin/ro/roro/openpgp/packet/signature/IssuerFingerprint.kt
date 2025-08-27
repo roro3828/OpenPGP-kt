@@ -19,7 +19,7 @@ class IssuerFingerprint: SignatureSubPacket {
      */
     val issuerFingerprint: ByteArray
 
-    constructor( keyVersion: Int, issuerFingerprint: ByteArray, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL ){
+    constructor( keyVersion: Int, issuerFingerprint: ByteArray, critical: Boolean = false ){
         require(keyVersion == 3 || keyVersion == 4 || keyVersion == 6) {
             "Invalid key version: $keyVersion. Must be 3, 4, or 6."
         }
@@ -30,7 +30,7 @@ class IssuerFingerprint: SignatureSubPacket {
         this.issuerFingerprint = issuerFingerprint
         this.critical = critical
     }
-    constructor( publicKeyPacket: PublicKey, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL ){
+    constructor( publicKeyPacket: PublicKey, critical: Boolean = false ){
         this.keyVersion = publicKeyPacket.keyVertion
         this.issuerFingerprint = publicKeyPacket.fingerprint
         this.critical = critical
@@ -42,7 +42,7 @@ class IssuerFingerprint: SignatureSubPacket {
      * @throws IllegalArgumentException bytesの長さが不正な場合
      */
     @Throws(IllegalArgumentException::class)
-    constructor(bytes: ByteArray, critical: Boolean = SignatureSubPacket.ISSUER_FINGERPRINT_SHOULD_BE_CRITICAL){
+    constructor(bytes: ByteArray, critical: Boolean = false){
         try {
             this.keyVersion = PublicKey.getFingerprintVersion(bytes)
             this.issuerFingerprint = bytes

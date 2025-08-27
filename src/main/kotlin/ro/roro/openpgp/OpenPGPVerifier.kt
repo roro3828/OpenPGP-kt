@@ -36,14 +36,14 @@ class OpenPGPVerifier {
     fun verify(digest: ByteArray, signature: ByteArray): Boolean {
 
         val algorithm = when(publicKey.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.Ed25519,
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> "Ed25519"
+            PublicKey.Ed25519,
+            PublicKey.EDDSA_LEGACY -> "Ed25519"
             else -> throw Error("Unsupported algorithm: ${publicKey.keyAlgo}")
         }
 
         // RFC 9580に従い、署名値を抽出
         val signatureValue = when(publicKey.keyAlgo){
-            OpenPGPPublicKeyAlgorithms.EDDSA_LEGACY -> {
+            PublicKey.EDDSA_LEGACY -> {
                 // Ed25519の署名は64バイトのRとSの連結
                 val bytesInputStream = ByteArrayInputStream(signature)
                 val rLen = OpenPGPUtil.readMPILen(bytesInputStream)
