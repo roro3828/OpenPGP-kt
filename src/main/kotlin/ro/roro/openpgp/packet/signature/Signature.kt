@@ -193,7 +193,7 @@ class Signature: OpenPGPPacket {
         this.hashLeft2Bytes = hashLeft2Bytes
         this.signatureValue = signatureValue
 
-        val saltSize = OpenPGPDigest.getInstance(this.trailer.keyAlgorithmId).saltSize
+        val saltSize = OpenPGPDigest.getInstance(this.trailer.hashAlgorithmId).saltSize
         require(saltSize == salt.size) { "salt must be $saltSize bytes long for key algorithm ${this.trailer.keyAlgorithmId}." }
         this.salt = salt
 
@@ -243,8 +243,8 @@ class Signature: OpenPGPPacket {
         const val THIRD_PARTY_CONFIRMATION_SIGNATURE = 0x50
 
         // 署名パケットのシグネチャの前に付与されるプレフィックス https://www.rfc-editor.org/rfc/rfc9580.html#name-computing-signatures
-        const val PUBLICKEY_V4_SIGNATURE_PREFIX = 0x99
-        const val PUBLICKEY_V6_SIGNATURE_PREFIX = 0x9B
+        const val KEY_PACKET_V4_SIGNATURE_PREFIX = 0x99
+        const val KEY_PACKET_V6_SIGNATURE_PREFIX = 0x9B
 
         const val USER_ID_CERTIFICATION_PREFIX = 0xB4
         const val USER_ID_ATTRIBUTE_CERT_PREFIX = 0xD1
@@ -254,7 +254,6 @@ class Signature: OpenPGPPacket {
             data: ByteArray,
             signer: OpenPGPSigner,
             signatureTypeId: Int,
-            keyAlgorithmId: Int,
             hashAlgorithmId: Int,
             hashedSubPackets: List<SignatureSubPacket>?,
             unhashedSubPackets: List<SignatureSubPacket>?,
@@ -264,7 +263,7 @@ class Signature: OpenPGPPacket {
             val trailer = SignatureTrailer(
                 4,
                 signatureTypeId,
-                keyAlgorithmId,
+                signer.keyAlgo,
                 hashAlgorithmId,
                 hashedSubPackets
             )
@@ -292,7 +291,6 @@ class Signature: OpenPGPPacket {
          * @param data 署名対象のデータ
          * @param signer 署名を行うOpenPGPSigner
          * @param signatureTypeId 署名タイプID
-         * @param keyAlgorithmId 鍵アルゴリズムID
          * @param hashAlgorithmId ハッシュアルゴリズムID
          * @param hashedSubPackets ハッシュされたサブパケットのリスト
          * @param unhashedSubPackets ハッシュされていないサブパケットのリスト
@@ -304,7 +302,6 @@ class Signature: OpenPGPPacket {
             data: ByteArray,
             signer: OpenPGPSigner,
             signatureTypeId: Int,
-            keyAlgorithmId: Int,
             hashAlgorithmId: Int,
             hashedSubPackets: List<SignatureSubPacket>?,
             unhashedSubPackets: List<SignatureSubPacket>?,
@@ -312,20 +309,20 @@ class Signature: OpenPGPPacket {
             passPhrase: ByteArray? = null
         ): Signature{
 
-            val saltSize = OpenPGPDigest.getInstance(keyAlgorithmId).saltSize
+            val saltSize = OpenPGPDigest.getInstance(signer.keyAlgo).saltSize
             val saltValue = ByteArray(saltSize)
             if(salt == null){
                 SecureRandom().nextBytes(saltValue)
             }
             else{
-                require(salt.size == saltSize) { "salt must be $saltSize bytes long for key algorithm $keyAlgorithmId." }
+                require(salt.size == saltSize) { "salt must be $saltSize bytes long for key algorithm ${signer.keyAlgo}." }
                 System.arraycopy(salt, 0, saltValue, 0, saltSize)
             }
 
             val trailer = SignatureTrailer(
                 6,
                 signatureTypeId,
-                keyAlgorithmId,
+                signer.keyAlgo,
                 hashAlgorithmId,
                 hashedSubPackets
             )
@@ -612,7 +609,7 @@ class Signature: OpenPGPPacket {
                         }
 
                         SignatureSubPacket.PREFERRED_AEAD_CIPHERSUITES -> {
-                            TODO("PREFERRED_AEAD_CIPHERSUITES is not implemented yet")
+                            PreferredAEADCiphersuites(packetBytes, isCritical)
                         }
 
                         else -> {
@@ -635,6 +632,44 @@ class Signature: OpenPGPPacket {
                 subPackets.add(subPacket)
             }
             return subPackets
+        }
+
+        /**
+         * 鍵の署名用データを生成する
+         * @param keyPacket 鍵パケット (PublicKey, PublicSubkey, SecretKey, SecretSubkey)
+         * @return 鍵の署名用データ
+         * @throws IllegalArgumentException keyPacketのバージョンが4または6以外の場合
+         */
+        fun createKeySignatureData(keyPacket: OpenPGPPacket): ByteArray{
+            require(keyPacket.packetType == OpenPGPPacket.PUBLIC_KEY ||
+                    keyPacket.packetType == OpenPGPPacket.PUBLIC_SUBKEY ||
+                    keyPacket.packetType == OpenPGPPacket.SECRET_KEY ||
+                    keyPacket.packetType == OpenPGPPacket.SECRET_SUBKEY) {
+                "keyPacket must be PublicKey, PublicSubkey, SecretKey or SecretSubkey packet. Packet type: ${keyPacket.packetType}"
+            }
+
+            val data = ByteArrayOutputStream()
+            val dataStream = DataOutputStream(data)
+
+            val keyBytes = keyPacket.encoded
+
+            when(val keyVersion = keyBytes[0].toInt()){
+                4 -> {
+                    dataStream.writeByte(KEY_PACKET_V4_SIGNATURE_PREFIX)
+                    dataStream.writeShort(keyBytes.size)
+                }
+                6 -> {
+                    dataStream.writeByte(KEY_PACKET_V6_SIGNATURE_PREFIX)
+                    dataStream.writeInt(keyBytes.size)
+                }
+                else -> {
+                    throw IllegalArgumentException("Unsupported key packet version: $keyVersion")
+                }
+            }
+
+            dataStream.write(keyBytes)
+
+            return data.toByteArray()
         }
     }
 

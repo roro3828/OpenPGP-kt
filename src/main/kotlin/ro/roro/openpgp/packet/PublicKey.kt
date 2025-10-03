@@ -349,27 +349,16 @@ open class PublicKey:OpenPGPPacket {
                     return hashedData
                 }
                 4 -> {
-                    val packetBytes = this.encoded
-                    val packetLen = packetBytes.size
                     val sha1 = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1)
-
-
-                    sha1.writeByte(Signature.PUBLICKEY_V4_SIGNATURE_PREFIX)
-                    sha1.writeShort(packetLen)
-                    sha1.write(packetBytes)
+                    sha1.write(Signature.createKeySignatureData(this))
 
                     val hashedData = sha1.digest()
 
                     return hashedData
                 }
                 6 -> {
-                    val packetBytes = this.encoded
-                    val packetLen = packetBytes.size
                     val sha256 = OpenPGPDigest.getInstance(OpenPGPDigest.SHA256)
-
-                    sha256.writeByte(Signature.PUBLICKEY_V6_SIGNATURE_PREFIX)
-                    sha256.writeInt(packetLen)
-                    sha256.write(packetBytes)
+                    sha256.write(Signature.createKeySignatureData(this))
 
                     val hashedData = sha256.digest()
 
@@ -465,28 +454,42 @@ open class PublicKey:OpenPGPPacket {
                 dataOutputStream.write(OpenPGPECCCurveOIDs.ED25519_LEGACY)
 
                 // Ed25519の公開鍵は33バイトで、最初の1バイトは0x40
-                val rawPublicKey = OpenPGPUtil.getRawEd25519PublicKey(this.key.encoded)
-                val mpiBytes = byteArrayOf( OpenPGPUtil.ED25519_LEGACY_PUBLIC_KEY_PREFIX.toByte(), *rawPublicKey )
+                val rawPublicKey = getRawEd25519PublicKey(this.key)
+                val mpiBytes = byteArrayOf( ED25519_LEGACY_PUBLIC_KEY_PREFIX.toByte(), *rawPublicKey )
                 val mpi = OpenPGPUtil.toMPI(mpiBytes)
                 dataOutputStream.write( mpi )
 
                 return outputStream.toByteArray()
             }
             X25519 -> {
-                TODO("X25519 is not supported yet")
+                val x25519Key = this.key
+
+                if( x25519Key.format != "X.509" ){
+                    throw InvalidKeyException("X25519 key must be in X.509 format")
+                }
+                // X.509形式の公開鍵からrawな公開鍵を取り出す
+                val spki = SubjectPublicKeyInfo.getInstance(x25519Key.encoded)
+
+                val algoId = spki.algorithm
+
+                if(EdECObjectIdentifiers.id_X25519 != algoId.algorithm){
+                    throw InvalidKeyException("Not X25519 public key")
+                }
+
+                val subjectPublicKeyBitString = spki.publicKeyData
+                val rawPublicKey = subjectPublicKeyBitString.bytes
+
+                if(rawPublicKey.size != X25519_PUBLIC_KEY_LENGTH){
+                    throw IllegalArgumentException("Invalid X25519 public key length: ${rawPublicKey.size}")
+                }
+
+                return rawPublicKey
             }
             X448 -> {
                 TODO("X448 is not supported yet")
             }
             Ed25519 -> {
-                val ed25519Key = this.key
-
-                if( ed25519Key.format != "X.509" ){
-                    throw InvalidKeyException("Ed25519 key must be in X.509 format")
-                }
-                val encodedKey = ed25519Key.encoded
-
-                return OpenPGPUtil.getRawEd25519PublicKey( encodedKey )
+                return getRawEd25519PublicKey( this.key )
             }
             Ed448 -> {
                 TODO("Ed448 is not supported yet")
@@ -497,7 +500,7 @@ open class PublicKey:OpenPGPPacket {
         }
     }
 
-    companion object{
+    companion object: OpenPGPPacket.OpenPGPPacketCompanion<PublicKey>{
 
         const val RSA_GENERAL = 1
         const val RSA_ENCRYPT_ONLY = 2
@@ -511,6 +514,14 @@ open class PublicKey:OpenPGPPacket {
         const val X448 = 26
         const val Ed25519 = 27
         const val Ed448 = 28
+
+        const val ED25519_PUBLIC_KEY_LENGTH = 32
+        const val ED25519_LEGACY_PUBLIC_KEY_PREFIX = 0x40
+        const val ED448_PUBLIC_KEY_LENGTH = 57
+
+        const val X25519_PUBLIC_KEY_LENGTH = 32
+        const val X448_PUBLIC_KEY_LENGTH = 56
+
 
         /**
          * PublikKey Algorithm Tag とPublicKeyのアルゴリズム名が一致しているかどうか
@@ -537,7 +548,7 @@ open class PublicKey:OpenPGPPacket {
          * @throws IllegalArgumentException versionが3,4,6以外の場合
          */
         @Throws(IllegalArgumentException::class)
-        fun fromBytes( body: ByteArray ):PublicKey{
+        override fun fromBytes( body: ByteArray ):PublicKey{
             return fromBytes(ByteArrayInputStream(body) )
         }
         /**
@@ -629,7 +640,9 @@ open class PublicKey:OpenPGPPacket {
         private fun bytesToPublicKey(algorithm: Int, bytes: ByteArrayInputStream): java.security.PublicKey {
             return bytesToPublicKey( algorithm, DataInputStream(bytes) )
         }
-        private fun bytesToPublicKey(algorithm: Int, dataInputStream: DataInputStream): java.security.PublicKey {
+
+        @JvmStatic
+        protected fun bytesToPublicKey(algorithm: Int, dataInputStream: DataInputStream): java.security.PublicKey {
             when(algorithm){
                 RSA_GENERAL -> {
                     val modulus = OpenPGPUtil.readMPI(dataInputStream)
@@ -665,17 +678,17 @@ open class PublicKey:OpenPGPPacket {
 
                     val mpiLen = OpenPGPUtil.readMPILen(dataInputStream)
 
-                    if( mpiLen != (OpenPGPUtil.ED25519_PUBLIC_KEY_LENGTH + 1) ){
+                    if( mpiLen != (ED25519_PUBLIC_KEY_LENGTH + 1) ){
                         throw IllegalArgumentException("EDDSA_LEGACY MPI length must be 33, but was $mpiLen")
                     }
 
                     val prefix = dataInputStream.readUnsignedByte()
 
-                    if( prefix != OpenPGPUtil.ED25519_LEGACY_PUBLIC_KEY_PREFIX ){
+                    if( prefix != ED25519_LEGACY_PUBLIC_KEY_PREFIX ){
                         throw IllegalArgumentException("EDDSA_LEGACY prefix must be 0x40, but was $prefix")
                     }
 
-                    val rawPublicKey = dataInputStream.readNBytes(32)
+                    val rawPublicKey = dataInputStream.readNBytes(ED25519_PUBLIC_KEY_LENGTH)
 
                     val keyFactory = KeyFactory.getInstance("Ed25519", BouncyCastleProvider())
 
@@ -688,14 +701,31 @@ open class PublicKey:OpenPGPPacket {
                     return publicKey
                 }
                 X25519 -> {
-                    TODO("X25519 is not supported yet")
+                    val rawPublicKey = dataInputStream.readNBytes(X25519_PUBLIC_KEY_LENGTH)
+
+                    val keyFactory = KeyFactory.getInstance("X25519", BouncyCastleProvider())
+
+                    val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_X25519)
+
+                    val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, rawPublicKey)
+                    val x509Spec = X509EncodedKeySpec(spki.encoded)
+                    val publicKey = keyFactory.generatePublic(x509Spec)
+
+                    return  publicKey
                 }
                 X448 -> {
-                    TODO("X448 is not supported yet")
+                    val rawPublicKey = dataInputStream.readNBytes(X448_PUBLIC_KEY_LENGTH)
+                    val keyFactory = KeyFactory.getInstance("X448", BouncyCastleProvider())
+
+                    val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_X448)
+                    val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, rawPublicKey)
+                    val x509Spec = X509EncodedKeySpec(spki.encoded)
+                    val publicKey = keyFactory.generatePublic(x509Spec)
+                    return  publicKey
                 }
                 Ed25519 -> {
                     // Ed25519の生の32バイトの公開鍵を読み取る
-                    val rawPublicKey = dataInputStream.readNBytes(32)
+                    val rawPublicKey = dataInputStream.readNBytes(ED25519_PUBLIC_KEY_LENGTH)
 
                     val keyFactory = KeyFactory.getInstance("Ed25519", BouncyCastleProvider())
 
@@ -708,12 +738,42 @@ open class PublicKey:OpenPGPPacket {
                     return publicKey
                 }
                 Ed448 -> {
-                    TODO("Ed448 is not supported yet")
+                    // Ed448の生の57バイトの公開鍵を読み取る
+                    val rawPublicKey = dataInputStream.readNBytes(ED448_PUBLIC_KEY_LENGTH)
+
+                    val keyFactory = KeyFactory.getInstance("Ed448", BouncyCastleProvider())
+
+                    val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed448)
+
+                    val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, rawPublicKey)
+                    val x509Spec = X509EncodedKeySpec(spki.encoded) // X.509形式にエンコード
+                    val publicKey = keyFactory.generatePublic(x509Spec)
+
+                    return publicKey
                 }
                 else -> {
                     throw IllegalArgumentException("Unsupported algorithm: $algorithm")
                 }
             }
+        }
+
+        fun getRawEd25519PublicKey(publicKey: java.security.PublicKey): ByteArray{
+            val spki = SubjectPublicKeyInfo.getInstance(publicKey.encoded)
+
+            val algoId = spki.algorithm
+
+            require(EdECObjectIdentifiers.id_Ed25519 == algoId.algorithm) {
+                "Not Ed25519 public key"
+            }
+
+            val subjectPublicKeyBitString = spki.publicKeyData
+            val rawPublicKey = subjectPublicKeyBitString.bytes
+
+            if(rawPublicKey.size != 32){
+                throw IllegalArgumentException("Invalid Ed25519 public key length: ${rawPublicKey.size}")
+            }
+
+            return rawPublicKey
         }
     }
 }

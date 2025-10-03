@@ -1,32 +1,51 @@
 package ro.roro.openpgp
 
+import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.packet.PublicKey
+import ro.roro.openpgp.packet.SecretKey
 import java.io.ByteArrayInputStream
 import java.security.Provider
 import java.security.Security
 import java.security.Signature
 
-class OpenPGPVerifier {
-    val provider: Provider?
-    val publicKey: PublicKey
+open class OpenPGPVerifier(val publicKey: PublicKey, provider: Provider? = null) {
+    protected val signer: Signature
 
-    constructor(publicKey: PublicKey){
-        this.provider = null
-        this.publicKey = publicKey
+    val provider: Provider
+        get() = signer.provider
+
+    val keyAlgo: Int
+        get() = publicKey.keyAlgo
+
+    init {
+        val algorithm = when(publicKey.keyAlgo){
+            PublicKey.Ed25519,
+            PublicKey.EDDSA_LEGACY -> "Ed25519"
+            else -> throw Error("Unsupported algorithm: ${publicKey.keyAlgo}")
+        }
+
+        this.signer = if(provider == null){
+            Signature.getInstance(algorithm)
+        } else {
+            Signature.getInstance(algorithm, provider)
+        }
     }
 
-    constructor(publicKey: PublicKey, provider: Provider){
-        this.provider = provider
-        this.publicKey = publicKey
-    }
+    constructor(publicKey: PublicKey): this(publicKey, null)
 
-    constructor(publicKey: PublicKey, providerName: String){
-        val provider =
-            Security.getProvider(providerName) ?: throw IllegalArgumentException("Provider $providerName not found")
-
-        this.provider = provider
-        this.publicKey = publicKey
-    }
+    /**
+     * providerNameで指定されたセキュリティプロバイダを使用して署名オブジェクトを初期化するコンストラクタ
+     * providerNameで指定された名前のプロバイダが見つからない場合、エラーがスローされる
+     * @param publicKey 公開鍵
+     * @param providerName セキュリティプロバイダの名前
+     * @throws Error 指定された名前のプロバイダが見つからない場合にスローされる
+     */
+    @Throws(Error::class)
+    constructor(publicKey: PublicKey, providerName: String): this(
+        publicKey,
+        Security.getProviders().firstOrNull { it.name == providerName }
+            ?: throw Error("Provider not found: $providerName")
+    )
 
     /**
      * 署名を検証
@@ -34,12 +53,6 @@ class OpenPGPVerifier {
      * @param signature 検証する署名 RFC 9580に従った形式で
      */
     fun verify(digest: ByteArray, signature: ByteArray): Boolean {
-
-        val algorithm = when(publicKey.keyAlgo){
-            PublicKey.Ed25519,
-            PublicKey.EDDSA_LEGACY -> "Ed25519"
-            else -> throw Error("Unsupported algorithm: ${publicKey.keyAlgo}")
-        }
 
         // RFC 9580に従い、署名値を抽出
         val signatureValue = when(publicKey.keyAlgo){
@@ -53,19 +66,22 @@ class OpenPGPVerifier {
 
                 r + s
             }
+
+            PublicKey.Ed25519 -> {
+                // Ed25519の署名は64バイトのRとSの連結
+                if(signature.size != 64){
+                    throw Error("Invalid Ed25519 signature length: ${signature.size}")
+                }
+                signature
+            }
             else -> throw Error("Unsupported algorithm: ${publicKey.keyAlgo}")
         }
 
-        val verifier = if(provider == null){
-            Signature.getInstance(algorithm)
-        } else {
-            Signature.getInstance(algorithm, provider)
+        signer.let {
+            it.initVerify(publicKey.key)
+            it.update(digest)
         }
 
-        verifier.initVerify(publicKey.key)
-
-        verifier.update(digest)
-
-        return verifier.verify(signatureValue)
+        return signer.verify(signatureValue)
     }
 }

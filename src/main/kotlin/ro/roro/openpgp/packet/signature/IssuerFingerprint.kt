@@ -44,8 +44,12 @@ class IssuerFingerprint: SignatureSubPacket {
     @Throws(IllegalArgumentException::class)
     constructor(bytes: ByteArray, critical: Boolean = false){
         try {
-            this.keyVersion = PublicKey.getFingerprintVersion(bytes)
-            this.issuerFingerprint = bytes
+            this.keyVersion = bytes[0].toInt()
+            val expectedLength = 1 + PublicKey.getFingerprintSize(this.keyVersion)
+            if (bytes.size != expectedLength) {
+                throw IllegalArgumentException("Invalid bytes length for IssuerFingerprint: expected $expectedLength, got ${bytes.size}")
+            }
+            this.issuerFingerprint = bytes.sliceArray(1 until expectedLength)
         }
         catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid bytes for IssuerFingerprint: ${e.message}")

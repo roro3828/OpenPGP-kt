@@ -4,30 +4,31 @@ import ro.roro.openpgp.packet.PublicKey
 import ro.roro.openpgp.packet.SecretKey
 import java.security.Provider
 import java.security.Security
-import java.security.Signature
 
-class OpenPGPSigner{
+class OpenPGPSigner(val secretKey: SecretKey, provider: Provider? = null): OpenPGPVerifier(secretKey.publicKey, provider) {
 
-    val provider: Provider?
-    val secretKey: SecretKey
-
-    constructor(secretKey: SecretKey){
-        this.provider = null
-        this.secretKey = secretKey
+    init {
+        if(secretKey.keyVertion != 4 && secretKey.keyVertion != 6){
+            // このライブラリではv4とv6の署名のみサポート
+            throw Error("This library supports only v4 and v6 signatures.")
+        }
     }
 
-    constructor(secretKey: SecretKey, provider: Provider){
-        this.provider = provider
-        this.secretKey = secretKey
-    }
+    constructor(secretKey: SecretKey): this(secretKey, null)
 
-    constructor(secretKey: SecretKey, providerName: String){
-        val provider =
-            Security.getProvider(providerName) ?: throw IllegalArgumentException("Provider $providerName not found")
-
-        this.provider = provider
-        this.secretKey = secretKey
-    }
+    /**
+     * providerNameで指定されたセキュリティプロバイダを使用して署名オブジェクトを初期化するコンストラクタ
+     * providerNameで指定された名前のプロバイダが見つからない場合、エラーがスローされる
+     * @param secretKey 秘密鍵
+     * @param providerName セキュリティプロバイダの名前
+     * @throws Error 指定された名前のプロバイダが見つからない場合にスローされる
+     */
+    @Throws(Error::class)
+    constructor(secretKey: SecretKey, providerName: String): this(
+        secretKey,
+        Security.getProviders().firstOrNull { it.name == providerName }
+            ?: throw Error("Provider not found: $providerName")
+    )
 
     fun sign(digest: ByteArray, passPhrase: String): ByteArray {
         return sign(digest, passPhrase.toByteArray())
@@ -39,22 +40,6 @@ class OpenPGPSigner{
      * @return 署名値 署名値はRFC 9580の仕様に従った形式で返される
      */
     fun sign(digest: ByteArray, passPhrase: ByteArray? = null): ByteArray {
-        if(secretKey.keyVertion != 4 && secretKey.keyVertion != 6){
-            // このライブラリではv4とv6の署名生成のみサポート
-            throw Error("This library only supports signature generation for v4 and v6 keys.")
-        }
-
-        val algorithm = when(secretKey.keyAlgo){
-            PublicKey.Ed25519,
-            PublicKey.EDDSA_LEGACY -> "Ed25519"
-            else -> throw Error("Unsupported algorithm: ${secretKey.keyAlgo}")
-        }
-
-        val signer = if(provider == null){
-            Signature.getInstance(algorithm)
-        } else {
-            Signature.getInstance(algorithm, provider)
-        }
 
         signer.initSign(secretKey.getSecretKey(passPhrase))
 
@@ -74,6 +59,10 @@ class OpenPGPSigner{
                 val sWithLength = OpenPGPUtil.toMPI(s)
 
                 rWithLength + sWithLength
+            }
+
+            PublicKey.Ed25519 -> {
+                signature
             }
             else -> throw Error("Unsupported algorithm: ${secretKey.keyAlgo}")
         }

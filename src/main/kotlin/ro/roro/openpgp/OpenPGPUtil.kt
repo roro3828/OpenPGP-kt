@@ -23,10 +23,9 @@ class OpenPGPUtil {
     companion object{
         const val CRC24_INIT= 0xB704CE
         const val CRC24_GENERATOR=0x864CFB
-
-
-
         private const val TAG = "OpenPGPUtil"
+
+        class OpenPGPPacketIdAndLength(val id: Int, val length: Int)
 
         fun getHexString(bytes: ByteArray, limitLen: Int = 100): String {
             val dbg = StringBuilder(String.format("len:[%5d] ", bytes.size))
@@ -107,31 +106,6 @@ class OpenPGPUtil {
         }
 
         /**
-         * SPKI (Subject Public Key Info) からEd25519の公開鍵を取得する
-         * @param spkiBytes SPKIのバイト配列
-         * @throws IllegalArgumentException
-         */
-        @Throws(IllegalArgumentException::class)
-        fun getRawEd25519PublicKey(spkiBytes: ByteArray): ByteArray{
-            val spki = SubjectPublicKeyInfo.getInstance(spkiBytes)
-
-            val algoId = spki.algorithm
-
-            if(EdECObjectIdentifiers.id_Ed25519 != algoId.algorithm){
-                throw IllegalArgumentException("Unsupported public key algorithm: ${algoId.algorithm.id}")
-            }
-
-            val subjectPublicKeyBitString = spki.publicKeyData
-            val rawPublicKey = subjectPublicKeyBitString.bytes
-
-            if(rawPublicKey.size != 32){
-                throw IllegalArgumentException("Invalid Ed25519 public key length: ${rawPublicKey.size}")
-            }
-
-            return rawPublicKey
-        }
-
-        /**
          * 32ByteのEd25519秘密鍵からKeyPairを生成
          */
         fun getKeyPairFromEd25519Secret(seed: ByteArray): KeyPair {
@@ -198,6 +172,45 @@ class OpenPGPUtil {
                 return len
             }
         }
+
+        /**
+         * レガシーパケットのパケット長を取得する
+         * @param bytes パケットのバイト列
+         * @param lengthType 長さのタイプ (0,1,2,3)
+         * @return パケットの長さ
+         * -1の場合、無限長
+         */
+        fun readLegacyPacketLen(bytes: ByteArrayInputStream, lengthType: Int): Int {
+            return readLegacyPacketLen(DataInputStream(bytes), lengthType)
+        }
+        /**
+         * レガシーパケットのパケット長を取得する
+         * @param dataInputStream パケットのDataInputStream
+         * @param lengthType 長さのタイプ (0,1,2,3)
+         * @return パケットの長さ
+         * -1の場合、無限長
+         */
+        fun readLegacyPacketLen(dataInputStream: DataInputStream, lengthType: Int): Int {
+            return when(lengthType and 0b11){
+                0 -> {
+                    dataInputStream.readUnsignedByte()
+                }
+                1 -> {
+                    dataInputStream.readUnsignedShort()
+                }
+                2 -> {
+                    dataInputStream.readInt()
+                }
+                3 -> {
+                    // indeterminate length
+                    -1
+                }
+                else -> {
+                    throw IllegalArgumentException("Invalid length type: $lengthType")
+                }
+            }
+        }
+
         /**
          * OpenPGPのパケット長をバイト列に変換する
          */
@@ -252,7 +265,76 @@ class OpenPGPUtil {
             return Base64.encode(data)
         }
 
-        const val ED25519_PUBLIC_KEY_LENGTH = 32
-        const val ED25519_LEGACY_PUBLIC_KEY_PREFIX = 0x40
+        fun fromBase64(data: String): ByteArray{
+            return Base64.decode(data)
+        }
+
+        /**
+         * dataが RFC 9580 で定義されるOpenPGPのフォーマットかどうかを判定する
+         * @param data 判定するデータ
+         * @return true OpenPGPFormat
+         * @return false LegacyFormat
+         */
+        fun isOpenPGPFormat(data: ByteArray): Boolean{
+            return isOpenPGPFormat(data[0].toInt())
+        }
+        /**
+         * dataが RFC 9580 で定義されるOpenPGPのフォーマットかどうかを判定する
+         * @param data 判定するデータ
+         * @return true OpenPGPFormat
+         * @return false LegacyFormat
+         */
+        fun isOpenPGPFormat(data: Int): Boolean{
+            val type = data and 0b11000000
+
+            return when (type) {
+                0b11000000 -> {
+                    true
+                }
+
+                0b10000000 -> {
+                    false
+                }
+
+                else -> {
+                    throw IllegalArgumentException("Invalid format")
+                }
+            }
+        }
+
+        /**
+         * OpenPGPのパケットIDとパケット長を取得する
+         * @param data パケットのバイト列
+         * @return Pair<パケットID, パケット長>
+         */
+        fun getOpenPGPPacketIdAndLength(data: ByteArrayInputStream): OpenPGPPacketIdAndLength{
+            return getOpenPGPPacketIdAndLength(DataInputStream(data))
+        }
+        /**
+         * OpenPGPのパケットIDとパケット長を取得する
+         * @param data パケットのDataInputStream
+         * @return Pair<パケットID, パケット長>
+         */
+        fun getOpenPGPPacketIdAndLength(data: DataInputStream): OpenPGPPacketIdAndLength {
+            val firstByte = data.readUnsignedByte()
+            val format = isOpenPGPFormat(firstByte)
+
+            val packetId = if(format){
+                firstByte and 0b00111111
+            }
+            else{
+                (firstByte ushr 2) and 0b00001111
+            }
+
+            val packetLen = if(format){
+                readPacketLen(data)
+            }
+            else{
+                val lengthType = firstByte and 0b00000011
+                readLegacyPacketLen(data, lengthType)
+            }
+
+            return OpenPGPPacketIdAndLength(packetId, packetLen)
+        }
     }
 }

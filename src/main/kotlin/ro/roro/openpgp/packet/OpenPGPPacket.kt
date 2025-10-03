@@ -113,6 +113,10 @@ interface OpenPGPPacket {
             return header + encoded
         }
 
+    interface OpenPGPPacketCompanion<T> {
+        fun fromBytes(body: ByteArray): T
+    }
+
     companion object{
 
         const val PUBLIC_KEY_ENCRYPTED_SESSION = 1
