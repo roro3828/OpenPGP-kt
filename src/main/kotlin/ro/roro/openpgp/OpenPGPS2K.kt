@@ -124,11 +124,10 @@ class OpenPGPS2K {
                     return OpenPGPS2K(ITERATED_AND_SALTED_S2K, hashAlgo, salt, decodedCount)
                 }
                 ARGON2_S2K -> {
-                    val salt = ByteArray(16)
-                    data.readFully(salt)
-                    val argon2T = data.readInt()
-                    val argon2P = data.readInt()
-                    val argon2M = data.readInt()
+                    val salt = data.readNBytes(16)
+                    val argon2T = data.readUnsignedByte()
+                    val argon2P = data.readUnsignedByte()
+                    val argon2M = data.readUnsignedByte()
                     return OpenPGPS2K(ARGON2_S2K, null, salt, null, argon2T, argon2P, argon2M)
                 }
                 else -> throw IllegalArgumentException("Unknown S2K type: $s2kType")
@@ -245,12 +244,12 @@ class OpenPGPS2K {
      * @return 生成された鍵
      */
     fun getKey(passPhrase: ByteArray, keyAlgorithm: OpenPGPSymmetricKeyAlgorithm): ByteArray {
-        if (keyAlgorithm.algorithmTag == OpenPGPSymmetricKeyAlgorithm.PLAIN.algorithmTag) {
+        if (keyAlgorithm.algorithm == OpenPGPSymmetricKeyAlgorithm.PLAIN) {
             // PLAIN
             return passPhrase.copyOf((keyAlgorithm.keySize + 7) / 8)
         }
 
-        if (this.s2kType == ARGON2_S2K && keyAlgorithm.algorithmTag != OpenPGPSymmetricKeyAlgorithm.AES_256.algorithmTag) {
+        if (this.s2kType == ARGON2_S2K && keyAlgorithm.algorithm != OpenPGPSymmetricKeyAlgorithm.AES_256) {
             throw IllegalArgumentException("Argon2 S2K can only be used with AES-256")
         }
 
@@ -358,6 +357,10 @@ class OpenPGPS2K {
         }
 
         return keyBytes
+    }
+
+    override fun toString(): String {
+        return "OpenPGPS2K(s2kType=$s2kType, hashAlgo=$hashAlgo, salt=${OpenPGPUtil.getHexString(salt)}, count=$count, argon2T=$argon2T, argon2P=$argon2P, argon2M=$argon2M)"
     }
 
 }

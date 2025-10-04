@@ -1,14 +1,17 @@
 package ro.roro
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import ro.roro.openpgp.OpenPGPAEAD
 import ro.roro.openpgp.OpenPGPDigest
 import ro.roro.openpgp.OpenPGPSigner
 import ro.roro.openpgp.OpenPGPSymmetricKeyAlgorithm
 import ro.roro.openpgp.OpenPGPUtil
 import ro.roro.openpgp.OpenPGPVerifier
+import ro.roro.openpgp.packet.OpenPGPPacket
 import ro.roro.openpgp.packet.PublicKey
 import ro.roro.openpgp.packet.PublicSubkey
 import ro.roro.openpgp.packet.SecretKey
+import ro.roro.openpgp.packet.SecretSubkey
 import ro.roro.openpgp.packet.UserID
 import ro.roro.openpgp.packet.signature.Features
 import ro.roro.openpgp.packet.signature.IssuerFingerprint
@@ -27,6 +30,9 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.util.Calendar
 import java.util.TimeZone
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlin.experimental.or
 
 fun main(){
@@ -36,15 +42,20 @@ fun main(){
     val secretkeyData = byteArrayOf(0x04.toByte(),0x67.toByte(),0xe6.toByte(),0x9a.toByte(),0x00.toByte(),0x16.toByte(),0x09.toByte(),0x2b.toByte(),0x06.toByte(),0x01.toByte(),0x04.toByte(),0x01.toByte(),0xda.toByte(),0x47.toByte(),0x0f.toByte(),0x01.toByte(),0x01.toByte(),0x07.toByte(),0x40.toByte(),0x02.toByte(),0xfa.toByte(),0xe9.toByte(),0x31.toByte(),0x63.toByte(),0x2a.toByte(),0x09.toByte(),0xa4.toByte(),0x32.toByte(),0xa5.toByte(),0x0f.toByte(),0x11.toByte(),0x84.toByte(),0xf7.toByte(),0x82.toByte(),0x57.toByte(),0x20.toByte(),0xd7.toByte(),0x9a.toByte(),0x81.toByte(),0x97.toByte(),0xb7.toByte(),0x8a.toByte(),0x2a.toByte(),0xfc.toByte(),0x78.toByte(),0xea.toByte(),0xa5.toByte(),0xd9.toByte(),0xd0.toByte(),0x1c.toByte(),0x50.toByte(),0xfe.toByte(),0x07.toByte(),0x03.toByte(),0x02.toByte(),0x4a.toByte(),0x0f.toByte(),0xc1.toByte(),0xff.toByte(),0xba.toByte(),0x33.toByte(),0xf0.toByte(),0x6e.toByte(),0xfa.toByte(),0x51.toByte(),0xe6.toByte(),0xdf.toByte(),0x40.toByte(),0xbd.toByte(),0xf3.toByte(),0x67.toByte(),0x77.toByte(),0x65.toByte(),0xbb.toByte(),0x44.toByte(),0x2d.toByte(),0x46.toByte(),0xc8.toByte(),0xa6.toByte(),0xfc.toByte(),0xc6.toByte(),0xe6.toByte(),0xfe.toByte(),0x09.toByte(),0x78.toByte(),0x42.toByte(),0x3a.toByte(),0x48.toByte(),0xf0.toByte(),0xb1.toByte(),0xdd.toByte(),0xf8.toByte(),0x7d.toByte(),0x8c.toByte(),0xbb.toByte(),0x25.toByte(),0x4b.toByte(),0x4e.toByte(),0x1a.toByte(),0x96.toByte(),0x5e.toByte(),0xba.toByte(),0xef.toByte(),0xa3.toByte(),0x23.toByte(),0x1f.toByte(),0x0e.toByte(),0x24.toByte(),0x40.toByte(),0xe4.toByte(),0x40.toByte(),0xcf.toByte(),0x6f.toByte(),0xe8.toByte(),0xba.toByte(),0x07.toByte(),0x29.toByte(),0xc2.toByte(),0x7b.toByte(),0x5f.toByte(),0x9e.toByte(),0x7c.toByte(),0x40.toByte(),0x91.toByte(),0x18.toByte(),0xd0.toByte(),0xb7.toByte(),0x0d.toByte(),0x8a.toByte(),0xdf.toByte(),0x5a.toByte(),0x5a.toByte(),0x43.toByte(),0x9e.toByte())
 
     //generatePublicKeyPacketWithSign()
-    rfc9580TestVector1()
+    //rfc9580TestVector1()
     //rfc9580TestVector3()
+    //rfc9580TestVector4()
+    rfc9580TestVector5()
 
+
+    val nonce = byteArrayOf(0xBB.toByte(), 0xAA.toByte(), 0x99.toByte(), 0x88.toByte(), 0x77.toByte(), 0x66.toByte(), 0x55.toByte(), 0x44.toByte(), 0x33.toByte(), 0x22.toByte(), 0x11.toByte(), 0x01.toByte())
+    val key = SecretKeySpec(byteArrayOf(0x00.toByte(), 0x01.toByte(), 0x02.toByte(), 0x03.toByte(), 0x04.toByte(), 0x05.toByte(), 0x06.toByte(), 0x07.toByte(), 0x08.toByte(), 0x09.toByte(), 0x0A.toByte(), 0x0B.toByte(), 0x0C.toByte(), 0x0D.toByte(), 0x0E.toByte(), 0x0F.toByte()), "AES")
 }
 
 fun generatePublicKeyPacketWithSign() {
     println("Generate PublicKey Packet with Sign")
     val secretKeySeed = byteArrayOf(0x2B.toByte(),0xD5.toByte(),0xD3.toByte(),0x22.toByte(),0xEA.toByte(),0x88.toByte(),0x40.toByte(),0x9B.toByte(),0xEB.toByte(),0x66.toByte(),0x07.toByte(),0x0B.toByte(),0x9A.toByte(),0xBC.toByte(),0xD4.toByte(),0x95.toByte(),0xA5.toByte(),0x23.toByte(),0x5A.toByte(),0xE8.toByte(),0xBD.toByte(),0x13.toByte(),0xEC.toByte(),0x0C.toByte(),0x36.toByte(),0x4E.toByte(),0x55.toByte(),0x39.toByte(),0x38.toByte(),0xA8.toByte(),0xE7.toByte(),0xC6.toByte())
-    val keyPair = OpenPGPUtil.getKeyPairFromEd25519Secret(secretKeySeed)
+    val keyPair = SecretKey.getEd25519KeyPair(secretKeySeed)
     val creationTime = Calendar.getInstance(TimeZone.getTimeZone("JST"))
     creationTime.set(2025, 2, 28, 21, 45, 52)
     val secretKeyPacket = SecretKey(creationTime, PublicKey.EDDSA_LEGACY, keyPair, 4)
@@ -62,10 +73,10 @@ fun generatePublicKeyPacketWithSign() {
         IssuerFingerprint(secretKeyPacket.publicKey, false),
         SignatureCreationTime(signatureCreationTime, false),
         PreferredSymmetricCiphersV1(
-            byteArrayOf(OpenPGPSymmetricKeyAlgorithm.AES_256.algorithmTag.toByte(),
-                    OpenPGPSymmetricKeyAlgorithm.AES_192.algorithmTag.toByte(),
-                    OpenPGPSymmetricKeyAlgorithm.AES_128.algorithmTag.toByte(),
-                    OpenPGPSymmetricKeyAlgorithm.TRIPLE_DES.algorithmTag.toByte()
+            byteArrayOf(OpenPGPSymmetricKeyAlgorithm.AES_256.toByte(),
+                    OpenPGPSymmetricKeyAlgorithm.AES_192.toByte(),
+                    OpenPGPSymmetricKeyAlgorithm.AES_128.toByte(),
+                    OpenPGPSymmetricKeyAlgorithm.TRIPLE_DES.toByte()
                 ), false),
         PreferredHashAlgorithms(
             byteArrayOf(OpenPGPDigest.SHA512.toByte(),
@@ -124,7 +135,7 @@ fun rfc9580TestVector1(){
      */
     val rfc9580SampleEd25519PublicKeyPacket = byteArrayOf(0x04.toByte(), 0x53.toByte(), 0xf3.toByte(), 0x5f.toByte(), 0x0b.toByte(), 0x16.toByte(), 0x09.toByte(), 0x2b.toByte(), 0x06.toByte(), 0x01.toByte(), 0x04.toByte(), 0x01.toByte(), 0xda.toByte(), 0x47.toByte(), 0x0f.toByte(), 0x01.toByte(), 0x01.toByte(), 0x07.toByte(), 0x40.toByte(), 0x3f.toByte(), 0x09.toByte(), 0x89.toByte(), 0x94.toByte(), 0xbd.toByte(), 0xd9.toByte(), 0x16.toByte(), 0xed.toByte(), 0x40.toByte(), 0x53.toByte(), 0x19.toByte(), 0x79.toByte(), 0x34.toByte(), 0xe4.toByte(), 0xa8.toByte(), 0x7c.toByte(), 0x80.toByte(), 0x73.toByte(), 0x3a.toByte(), 0x12.toByte(), 0x80.toByte(), 0xd6.toByte(), 0x2f.toByte(), 0x80.toByte(), 0x10.toByte(), 0x99.toByte(), 0x2e.toByte(), 0x43.toByte(), 0xee.toByte(), 0x3b.toByte(), 0x24.toByte(), 0x06.toByte())
     val rfc9580SampleEd25519SecretKeyRaw = byteArrayOf(0x1a.toByte(), 0x8b.toByte(), 0x1f.toByte(), 0xf0.toByte(), 0x5d.toByte(), 0xed.toByte(), 0x48.toByte(), 0xe1.toByte(), 0x8b.toByte(), 0xf5.toByte(), 0x01.toByte(), 0x66.toByte(), 0xc6.toByte(), 0x64.toByte(), 0xab.toByte(), 0x02.toByte(), 0x3e.toByte(), 0xa7.toByte(), 0x00.toByte(), 0x03.toByte(), 0xd7.toByte(), 0x8d.toByte(), 0x9e.toByte(), 0x41.toByte(), 0xf5.toByte(), 0x75.toByte(), 0x8a.toByte(), 0x91.toByte(), 0xd8.toByte(), 0x50.toByte(), 0xf8.toByte(), 0xd2.toByte())
-    val rfc9580SampleEd25519Key = OpenPGPUtil.getKeyPairFromEd25519Secret(rfc9580SampleEd25519SecretKeyRaw)
+    val rfc9580SampleEd25519Key = SecretKey.getEd25519KeyPair(rfc9580SampleEd25519SecretKeyRaw)
 
     val publicKeyPacket = PublicKey.fromBytes(rfc9580SampleEd25519PublicKeyPacket)
     val secretKeyPacket = SecretKey(publicKeyPacket, rfc9580SampleEd25519Key.private)
@@ -233,6 +244,96 @@ fun rfc9580TestVector3() {
             else -> {
                 println("packet id: " + packet.id)
             }
+        }
+    }
+}
+
+fun rfc9580TestVector4() {
+    val rawBytearray = OpenPGPUtil.fromBase64(
+        "xUsGY4d/4xsAAAAg+U2nu0jWCmHlZ3BqZYfQMxmZu52JGggkLq2EVD34laMAGXKB" +
+                "exK+cH6NX1hs5hNhIB00TrJmosgv3mg1ditlsLfCsQYfGwoAAABCBYJjh3/jAwsJ" +
+                "BwUVCg4IDAIWAAKbAwIeCSIhBssYbE8GCaaX5NUt+mxyKwwfHifBilZwj2Ul7Ce6" +
+                "2azJBScJAgcCAAAAAK0oIBA+LX0ifsDm185Ecds2v8lwgyU2kCcUmKfvBXbAf6rh" +
+                "RYWzuQOwEn7E/aLwIwRaLsdry0+VcallHhSu4RN6HWaEQsiPlR4zxP/TP7mhfVEe" +
+                "7XWPxtnMUMtf15OyA51YBMdLBmOHf+MZAAAAIIaTJINn+eUBXbki+PSAld2nhJh/" +
+                "LVmFsS+60WyvXkQ1AE1gCk95TUR3XFeibg/u/tVY6a//1q0NWC1X+yui3O24wpsG" +
+                "GBsKAAAALAWCY4d/4wKbDCIhBssYbE8GCaaX5NUt+mxyKwwfHifBilZwj2Ul7Ce6" +
+                "2azJAAAAAAQBIKbpGG2dWTX8j+VjFM21J0hqWlEg+bdiojWnKfA5AQpWUWtnNwDE" +
+                "M0g12vYxoWM8Y81W+bHBw805I8kWVkXU6vFOi+HWvv/ira7ofJu16NnoUkhclkUr" +
+                "k0mXubZvyl4GBg==")
+
+    val byteStream = ByteArrayInputStream(rawBytearray)
+    while(0 < byteStream.available()) {
+        val packet = OpenPGPUtil.getOpenPGPPacketIdAndLength(byteStream)
+        println("Packet Tag: " + packet.id)
+        println("Packet Length: " + packet.length)
+
+        val bytes = byteStream.readNBytes(packet.length)
+        println("Packet Data: " + OpenPGPUtil.getHexString(bytes))
+
+        when(packet.id){
+            OpenPGPPacket.SECRET_KEY -> {
+                val secretKey: SecretKey = SecretKey.fromBytes(bytes)
+                println("Secret Key Algorithm: " + secretKey.keyAlgo)
+                println("Fingerprint: " + OpenPGPUtil.getHexString(secretKey.fingerprint))
+                println("Public Key data:" + OpenPGPUtil.getHexString(secretKey.publicKey.encoded))
+                val secret = secretKey.getSecretKey()
+
+                println("Secret: " + OpenPGPUtil.getHexString(secretKey.getKeyData()))
+            }
+
+            OpenPGPPacket.SECRET_SUBKEY -> {
+                val secretSubKey: SecretSubkey = SecretSubkey.fromBytes(bytes)
+                println("Secret Subkey Algorithm: " + secretSubKey.keyAlgo)
+                println("Fingerprint: " + OpenPGPUtil.getHexString(secretSubKey.fingerprint))
+            }
+
+        }
+    }
+}
+
+fun rfc9580TestVector5() {
+    val rawBytearray = OpenPGPUtil.fromBase64(
+            "xYIGY4d/4xsAAAAg+U2nu0jWCmHlZ3BqZYfQMxmZu52JGggkLq2EVD34laP9JgkC" +
+            "FARdb9ccngltHraRe25uHuyuAQQVtKipJ0+r5jL4dacGWSAheCWPpITYiyfyIOPS" +
+            "3gIDyg8f7strd1OB4+LZsUhcIjOMpVHgmiY/IutJkulneoBYwrEGHxsKAAAAQgWC" +
+            "Y4d/4wMLCQcFFQoOCAwCFgACmwMCHgkiIQbLGGxPBgmml+TVLfpscisMHx4nwYpW" +
+            "cI9lJewnutmsyQUnCQIHAgAAAACtKCAQPi19In7A5tfORHHbNr/JcIMlNpAnFJin" +
+            "7wV2wH+q4UWFs7kDsBJ+xP2i8CMEWi7Ha8tPlXGpZR4UruETeh1mhELIj5UeM8T/" +
+            "0z+5oX1RHu11j8bZzFDLX9eTsgOdWATHggZjh3/jGQAAACCGkySDZ/nlAV25Ivj0" +
+            "gJXdp4SYfy1ZhbEvutFsr15ENf0mCQIUBA5hhGgp2oaavg6mFUXcFMwBBBUuE8qf" +
+            "9Ock+xwusd+GAglBr5LVyr/lup3xxQvHXFSjjA2haXfoN6xUGRdDEHI6+uevKjVR" +
+            "v5oAxgu7eJpaXNjCmwYYGwoAAAAsBYJjh3/jApsMIiEGyxhsTwYJppfk1S36bHIr" +
+            "DB8eJ8GKVnCPZSXsJ7rZrMkAAAAABAEgpukYbZ1ZNfyP5WMUzbUnSGpaUSD5t2Ki" +
+            "Nacp8DkBClZRa2c3AMQzSDXa9jGhYzxjzVb5scHDzTkjyRZWRdTq8U6L4da+/+Kt" +
+            "ruh8m7Xo2ehSSFyWRSuTSZe5tm/KXgYG")
+
+    val byteStream = ByteArrayInputStream(rawBytearray)
+    while(0 < byteStream.available()) {
+        val packet = OpenPGPUtil.getOpenPGPPacketIdAndLength(byteStream)
+        println("Packet Tag: " + packet.id)
+        println("Packet Length: " + packet.length)
+
+        val bytes = byteStream.readNBytes(packet.length)
+        println("Packet Data: " + OpenPGPUtil.getHexString(bytes))
+
+        when(packet.id){
+            OpenPGPPacket.SECRET_KEY -> {
+                val secretKey: SecretKey = SecretKey.fromBytes(bytes)
+                println("Secret Key Algorithm: " + secretKey.keyAlgo)
+                println("Fingerprint: " + OpenPGPUtil.getHexString(secretKey.fingerprint))
+                val secretKeyData = secretKey.getKeyData("correct horse battery staple".toByteArray())
+                println("Secret Key data:" + OpenPGPUtil.getHexString(secretKeyData))
+            }
+
+            OpenPGPPacket.SECRET_SUBKEY -> {
+                val secretSubKey: SecretSubkey = SecretSubkey.fromBytes(bytes)
+                println("Secret Subkey Algorithm: " + secretSubKey.keyAlgo)
+                println("Fingerprint: " + OpenPGPUtil.getHexString(secretSubKey.fingerprint))
+                val secretKeyData = secretSubKey.getKeyData("correct horse battery staple".toByteArray())
+                println("Secret Key data:" + OpenPGPUtil.getHexString(secretKeyData))
+            }
+
         }
     }
 }

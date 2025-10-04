@@ -1,13 +1,26 @@
 package ro.roro.openpgp.packet
 
+import org.bouncycastle.asn1.DEROctetString
+import org.bouncycastle.asn1.edec.EdECObjectIdentifiers
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.bouncycastle.crypto.hpke.AEAD
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
+import org.bouncycastle.crypto.params.X25519PrivateKeyParameters
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import ro.roro.openpgp.OpenPGPAEAD
 import ro.roro.openpgp.OpenPGPDigest
 import ro.roro.openpgp.OpenPGPS2K
 import ro.roro.openpgp.OpenPGPSymmetricKeyAlgorithm
 import ro.roro.openpgp.OpenPGPUtil
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.PrivateKey
+import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.X509EncodedKeySpec
 import java.util.Calendar
 
 open class SecretKey:OpenPGPPacket {
@@ -219,6 +232,71 @@ open class SecretKey:OpenPGPPacket {
             throw Error("Secret key data is null, cannot get secret key")
         }
 
+        val rawKeyMaterial = this.getKeyData(passPhrase)
+
+        return bytesToPrivateKey(this.keyAlgo, ByteArrayInputStream(rawKeyMaterial))
+    }
+
+    /**
+     * 暗号化されていない秘密鍵の生データを取得する
+     */
+    fun getKeyData(passPhrase: ByteArray? = null): ByteArray{
+        if(this.secretKey != null) {
+            when (this.keyAlgo) {
+                PublicKey.RSA_GENERAL -> {
+                    TODO("RSA is not supported yet")
+                }
+
+                PublicKey.DSA -> {
+                    TODO("DSA is not supported yet")
+                }
+
+                PublicKey.ELGAMAL_ENCRYPT -> {
+                    TODO("ELGAMAL_ENCRYPT is not supported yet")
+                }
+
+                PublicKey.ECDSA -> {
+                    TODO("ECDSA is not supported yet")
+                }
+
+                PublicKey.ECDH -> {
+                    TODO("ECDH is not supported yet")
+                }
+
+                PublicKey.EDDSA_LEGACY -> {
+                    val encodedSize = this.secretKey.encoded.size
+                    val rawKeyData =
+                        this.secretKey.encoded.sliceArray((encodedSize - ED25519_PRIVATE_KEY_LENGTH) until encodedSize)
+                    return OpenPGPUtil.toMPI(rawKeyData)
+                }
+
+                PublicKey.X25519 -> {
+                    val encodedSize = this.secretKey.encoded.size
+                    return this.secretKey.encoded.sliceArray((encodedSize - X25519_PRIVATE_KEY_LENGTH) until encodedSize)
+                }
+
+                PublicKey.X448 -> {
+                    TODO("X448 is not supported yet")
+                }
+
+                PublicKey.Ed25519 -> {
+                    val encodedSize = this.secretKey.encoded.size
+                    return this.secretKey.encoded.sliceArray((encodedSize - ED25519_PRIVATE_KEY_LENGTH) until encodedSize)
+                }
+
+                PublicKey.Ed448 -> {
+                    TODO("Ed448 is not supported yet")
+                }
+
+                else -> {
+                    throw IllegalArgumentException("Unsupported algorithm: $keyAlgo")
+                }
+            }
+        }
+        if(this.secretKeyData == null){
+            throw Error("Secret key data is null, cannot get secret key")
+        }
+
         val byteStream = ByteArrayInputStream(this.secretKeyData)
         val dataInputStream = DataInputStream(byteStream)
 
@@ -227,20 +305,33 @@ open class SecretKey:OpenPGPPacket {
         if(s2kUsage == OpenPGPS2K.S2KUSAGE_UNPROTECTED){
             // 暗号化されていない鍵
 
-            val keyData = ByteArray(dataInputStream.available() - 2) // 最後の2バイトはチェックサム
-            dataInputStream.readFully(keyData)
-            val checkSum = dataInputStream.readUnsignedShort()
+            val keyData = when(this.keyVertion){
+                //3 4の場合、最後の2バイトがチェックサム
+                3, 4 -> {
+                    val keyData = ByteArray(dataInputStream.available() - 2) // 最後の2バイトはチェックサム
+                    dataInputStream.readFully(keyData)
+                    val checkSum = dataInputStream.readUnsignedShort()
 
-            var tmp: Int = 0
-            for( i in keyData.indices) {
-                tmp = (keyData[i].toUByte().toInt() + tmp) % 65536
+                    var tmp: Int = 0
+                    for( i in keyData.indices) {
+                        tmp = (keyData[i].toUByte().toInt() + tmp) % 65536
+                    }
+
+                    if( tmp != checkSum ){
+                        throw IllegalArgumentException("Checksum mismatch: expected $checkSum, got $tmp")
+                    }
+
+                    keyData
+                }
+                6 -> {
+                    dataInputStream.readAllBytes()
+                }
+                else -> {
+                    throw IllegalArgumentException("Unsupported key version: $keyVertion")
+                }
             }
 
-            if( tmp != checkSum ){
-                throw IllegalArgumentException("Checksum mismatch: expected $checkSum, got $tmp")
-            }
-
-            return bytesToPrivateKey(this.keyAlgo, ByteArrayInputStream(keyData))
+            return keyData
         }
 
         if(passPhrase == null){
@@ -258,18 +349,26 @@ open class SecretKey:OpenPGPPacket {
         val encryptionAlgo =
             if( s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD || s2kUsage == OpenPGPS2K.S2KUSAGE_CFB || s2kUsage == OpenPGPS2K.S2KUSAGE_MALLEABLE_CFB ){
                 val tag = dataInputStream.readUnsignedByte()
-                OpenPGPSymmetricKeyAlgorithm.getKeyAlgorithmByTag(tag)
+                OpenPGPSymmetricKeyAlgorithm(tag, BouncyCastleProvider())
             }
             else{
-                OpenPGPSymmetricKeyAlgorithm.getKeyAlgorithmByTag(s2kUsage)
+                OpenPGPSymmetricKeyAlgorithm(s2kUsage, BouncyCastleProvider())
             }
 
-        if( s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD ){
-            TODO("AEAD encryption is not yet implemented")
+        val aeadAlgo = if( s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD ){
+            dataInputStream.readUnsignedByte()
+        }
+        else{
+            -1
         }
 
-        if( publicKey.keyVertion == 6 && (s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD || s2kUsage == OpenPGPS2K.S2KUSAGE_CFB) ){
-            val feldSize = dataInputStream.readUnsignedByte()
+        val fieldSize = if( publicKey.keyVertion == 6 && (s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD || s2kUsage == OpenPGPS2K.S2KUSAGE_CFB) ){
+            val size = dataInputStream.readUnsignedByte()
+
+            size
+        }
+        else{
+            -1
         }
 
         val key =
@@ -281,81 +380,67 @@ open class SecretKey:OpenPGPPacket {
                 passPhrase
             }
 
-        if( s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD ){
-            TODO("AEAD encryption is not yet implemented")
-        }
-
-        val iv = if(s2kUsage != OpenPGPS2K.S2KUSAGE_AEAD){
-            val blockSize = (encryptionAlgo.blockSize + 7) / 8
-            dataInputStream.readNBytes(blockSize)
-        } else {
-            ByteArray(0) // AEAD does not use IV in the same way
+        val iv = when(s2kUsage){
+            OpenPGPS2K.S2KUSAGE_AEAD -> {
+                val nonceLength = OpenPGPAEAD.getNonceLength(aeadAlgo)
+                dataInputStream.readNBytes(nonceLength)
+            }
+            else -> {
+                val blockSize = (encryptionAlgo.blockSize + 7) / 8
+                dataInputStream.readNBytes(blockSize)
+            }
         }
 
         val keyData = dataInputStream.readAllBytes()
 
-        val decryptedKey = encryptionAlgo.decrypt(
-            keyData,
-            key,
-            iv
-        )
+        return if( s2kUsage == OpenPGPS2K.S2KUSAGE_AEAD ) {
+            require(encryptionAlgo.standardAlgorithmName == OpenPGPSymmetricKeyAlgorithm.AES_STANDARD_NAME) { "AEAD is only supported with AES" }
 
-        val rawKeyMaterial = decryptedKey.sliceArray(0 until decryptedKey.size - 20) // 最後の20バイトはハッシュ値(SHA-1)
-        val keyDigest = decryptedKey.sliceArray(decryptedKey.size - 20 until decryptedKey.size)
 
-        // 与えられたハッシュ値と計算したハッシュ値が異なるときは、パスフレーズが間違っているか、鍵が破損している
-        val rawKeyDigest = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial)
-        if(!keyDigest.contentEquals(rawKeyDigest)){
-            throw IllegalArgumentException("Key or passphrase is incorrect")
+            val aeadCipher = OpenPGPAEAD(aeadAlgo)
+
+            val packetHeader = byteArrayOf((0b11000000 or this.packetType).toByte())
+
+            val hkdf = aeadCipher.hkdfExpand(key, packetHeader + byteArrayOf(this.keyVertion.toByte(), encryptionAlgo.algorithm.toByte(), aeadAlgo.toByte()), 32)
+
+            val associatedData = packetHeader + this.publicKey.encoded
+
+            aeadCipher.decrypt(
+                keyData,
+                hkdf,
+                iv,
+                associatedData
+            )
+
         }
+        else{
+            val decryptedKey = encryptionAlgo.decrypt(
+                keyData,
+                key,
+                iv
+            )
 
-        return bytesToPrivateKey(this.keyAlgo, ByteArrayInputStream(rawKeyMaterial))
-    }
+            val rawKeyMaterial = decryptedKey.sliceArray(0 until decryptedKey.size - 20) // 最後の20バイトはハッシュ値(SHA-1)
+            val keyDigest = decryptedKey.sliceArray(decryptedKey.size - 20 until decryptedKey.size)
 
-    private fun getKeyData(): ByteArray{
-        if(this.secretKey == null){
-            throw Error("Secret key data is null, cannot get key data")
-        }
+            // 与えられたハッシュ値と計算したハッシュ値が異なるときは、パスフレーズが間違っているか、鍵が破損している
+            val rawKeyDigest = OpenPGPDigest.getInstance(OpenPGPDigest.SHA1).digest(rawKeyMaterial)
+            if(!keyDigest.contentEquals(rawKeyDigest)){
+                throw IllegalArgumentException("Key or passphrase is incorrect")
+            }
 
-        when(this.keyAlgo){
-            PublicKey.RSA_GENERAL -> {
-                TODO("RSA is not supported yet")
-            }
-            PublicKey.DSA -> {
-                TODO("DSA is not supported yet")
-            }
-            PublicKey.ELGAMAL_ENCRYPT -> {
-                TODO("ELGAMAL_ENCRYPT is not supported yet")
-            }
-            PublicKey.ECDSA -> {
-                TODO("ECDSA is not supported yet")
-            }
-            PublicKey.ECDH -> {
-                TODO("ECDH is not supported yet")
-            }
-            PublicKey.EDDSA_LEGACY -> {
-                val rawKeyData = this.secretKey.encoded.sliceArray((this.secretKey.encoded.size) - 32 until this.secretKey.encoded.size)
-                return OpenPGPUtil.toMPI(rawKeyData)
-            }
-            PublicKey.X25519 -> {
-                TODO("X25519 is not supported yet")
-            }
-            PublicKey.X448 -> {
-                TODO("X448 is not supported yet")
-            }
-            PublicKey.Ed25519 -> {
-                TODO("Ed25519 is not supported yet")
-            }
-            PublicKey.Ed448 -> {
-                TODO("Ed448 is not supported yet")
-            }
-            else -> {
-                throw IllegalArgumentException("Unsupported algorithm: $keyAlgo")
-            }
+            rawKeyMaterial
         }
     }
 
     companion object{
+        const val ED25519_PRIVATE_KEY_LENGTH = 32
+        const val ED448_PRIVATE_KEY_LENGTH = 57
+        const val X25519_PRIVATE_KEY_LENGTH = 32
+        const val X448_PRIVATE_KEY_LENGTH = 56
+
+
+
         fun fromBytes( body: ByteArray):SecretKey{
             val dataInputStream = DataInputStream(ByteArrayInputStream(body))
 
@@ -390,18 +475,23 @@ open class SecretKey:OpenPGPPacket {
                     val mpi = OpenPGPUtil.readMPI(dataInputStream)
                     val ed25519Seed = mpi.toByteArray()
 
-                    val keyPair = OpenPGPUtil.getKeyPairFromEd25519Secret(ed25519Seed)
+                    val keyPair = getEd25519KeyPair(ed25519Seed)
 
                     return keyPair.private
                 }
                 PublicKey.X25519 -> {
-                    TODO("X25519 is not supported yet")
+                    val x25519Seed = dataInputStream.readNBytes(X25519_PRIVATE_KEY_LENGTH)
+                    val keyPair = getX25519KeyPair(x25519Seed)
+                    return keyPair.private
                 }
                 PublicKey.X448 -> {
                     TODO("X448 is not supported yet")
                 }
                 PublicKey.Ed25519 -> {
-                    TODO("Ed25519 is not supported yet")
+                    val ed25519Seed = dataInputStream.readNBytes(ED25519_PRIVATE_KEY_LENGTH)
+
+                    val keyPair = getEd25519KeyPair(ed25519Seed)
+                    return keyPair.private
                 }
                 PublicKey.Ed448 -> {
                     TODO("Ed448 is not supported yet")
@@ -410,6 +500,75 @@ open class SecretKey:OpenPGPPacket {
                     throw IllegalArgumentException("Unsupported algorithm: $algorithm")
                 }
             }
+        }
+
+        /**
+         * 32ByteのEd25519秘密鍵からKeyPairを生成
+         */
+        fun getEd25519KeyPair(bytes: ByteArray): KeyPair {
+            require(bytes.size == ED25519_PRIVATE_KEY_LENGTH) { "Ed25519 private key must be $ED25519_PRIVATE_KEY_LENGTH bytes long" }
+
+            // 1. BouncyCastleの低レベルAPIを使用して秘密鍵パラメータと公開鍵パラメータを取得
+            val privateKeyParams = Ed25519PrivateKeyParameters(bytes, 0)
+            val publicKeyParams = privateKeyParams.generatePublicKey()
+
+            // 2. KeyFactoryをBouncyCastleプロバイダで取得
+            // "Ed25519" または "EdDSA" がアルゴリズム名として利用可能
+            val keyFactory = KeyFactory.getInstance("Ed25519", BouncyCastleProvider())
+
+            // 3. PrivateKeyオブジェクトを生成
+            // RFC 8410 によると、Ed25519のPrivateKeyInfoでは、privateKeyオクテット文字列が直接シードを格納します。
+            val privateKeyAlgorithmIdentifier =
+                AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519)
+            val pkInfo = PrivateKeyInfo(privateKeyAlgorithmIdentifier, DEROctetString(bytes))
+            val pkcs8Spec = PKCS8EncodedKeySpec(pkInfo.encoded) // PKCS#8形式にエンコード
+            val privateKey = keyFactory.generatePrivate(pkcs8Spec)
+
+            // 4. PublicKeyオブジェクトを生成
+            // Ed25519の公開鍵(32バイト)をX.509 SubjectPublicKeyInfo形式にエンコード
+            val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519)
+            // publicKeyParams.encoded は生の32バイト公開鍵を返します
+            val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, publicKeyParams.encoded)
+            val x509Spec = X509EncodedKeySpec(spki.encoded) // X.509形式にエンコード
+            val publicKey = keyFactory.generatePublic(x509Spec)
+
+
+            // 5. KeyPairオブジェクトを作成して返す
+            val keyPair = KeyPair(publicKey, privateKey)
+            return keyPair
+        }
+
+        /**
+         * 32ByteのX25519秘密鍵からKeyPairを生成
+         */
+        fun getX25519KeyPair(bytes: ByteArray): KeyPair {
+            require(bytes.size == X25519_PRIVATE_KEY_LENGTH) {"X25519 private} key must be $X25519_PRIVATE_KEY_LENGTH bytes long" }
+
+            // 1. BouncyCastleの低レベルAPIを使用して秘密鍵パラメータと公開鍵パラメータを取得
+            val privateKeyParams = X25519PrivateKeyParameters(bytes, 0)
+            val publicKeyParams = privateKeyParams.generatePublicKey()
+
+            // 2. KeyFactoryをBouncyCastleプロバイダで取得
+            val keyFactory = KeyFactory.getInstance("X25519", BouncyCastleProvider())
+
+            // 3. PrivateKeyオブジェクトを生成
+            val privateKeyAlgorithmIdentifier =
+                AlgorithmIdentifier(EdECObjectIdentifiers.id_X25519)
+            val pkInfo = PrivateKeyInfo(privateKeyAlgorithmIdentifier, DEROctetString(bytes))
+            val pkcs8Spec = PKCS8EncodedKeySpec(pkInfo.encoded) // PKCS#8形式にエンコード
+            val privateKey = keyFactory.generatePrivate(pkcs8Spec)
+
+            // 4. PublicKeyオブジェクトを生成
+            val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_X25519)
+            // publicKeyParams.encoded は生の32バイト公開鍵を返します
+            val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, publicKeyParams.encoded)
+            val x509Spec = X509EncodedKeySpec(spki.encoded) // X.509形式にエンコード
+            val publicKey = keyFactory.generatePublic(x509Spec)
+
+
+            // 5. KeyPairオブジェクトを作成して返す
+            val keyPair = KeyPair(publicKey, privateKey)
+            return keyPair
         }
     }
 }

@@ -106,44 +106,6 @@ class OpenPGPUtil {
         }
 
         /**
-         * 32ByteのEd25519秘密鍵からKeyPairを生成
-         */
-        fun getKeyPairFromEd25519Secret(seed: ByteArray): KeyPair {
-            if (seed.size != 32) {
-                throw IllegalArgumentException("Seed must be 32 bytes long for Ed25519. Provided length: ${seed.size}")
-            }
-
-            // 1. BouncyCastleの低レベルAPIを使用して秘密鍵パラメータと公開鍵パラメータを取得
-            val privateKeyParams = Ed25519PrivateKeyParameters(seed, 0)
-            val publicKeyParams = privateKeyParams.generatePublicKey() // シードから公開鍵を導出
-
-            // 2. KeyFactoryをBouncyCastleプロバイダで取得
-            // "Ed25519" または "EdDSA" がアルゴリズム名として利用可能
-            val keyFactory = KeyFactory.getInstance("Ed25519", BouncyCastleProvider())
-
-            // 3. PrivateKeyオブジェクトを生成
-            // RFC 8410 によると、Ed25519のPrivateKeyInfoでは、privateKeyオクテット文字列が直接シードを格納します。
-            val privateKeyAlgorithmIdentifier =
-                AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519)
-            val pkInfo = PrivateKeyInfo(privateKeyAlgorithmIdentifier, DEROctetString(seed))
-            val pkcs8Spec = PKCS8EncodedKeySpec(pkInfo.encoded) // PKCS#8形式にエンコード
-            val privateKey = keyFactory.generatePrivate(pkcs8Spec)
-
-            // 4. PublicKeyオブジェクトを生成
-            // Ed25519の公開鍵(32バイト)をX.509 SubjectPublicKeyInfo形式にエンコード
-            val publicKeyAlgorithmIdentifier = AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519)
-            // publicKeyParams.encoded は生の32バイト公開鍵を返します
-            val spki = SubjectPublicKeyInfo(publicKeyAlgorithmIdentifier, publicKeyParams.encoded)
-            val x509Spec = X509EncodedKeySpec(spki.encoded) // X.509形式にエンコード
-            val publicKey = keyFactory.generatePublic(x509Spec)
-
-
-            // 5. KeyPairオブジェクトを作成して返す
-            val keyPair = KeyPair(publicKey, privateKey)
-            return keyPair
-        }
-
-        /**
          * OpenPGPのパケット長を取得する
          * @param bytes パケットのバイト列
          * @return パケットの長さ
